@@ -26,10 +26,10 @@ spec:
               containerPort: {{ .Values.inariServer.service.port }}
           env:
             - name: INARI_DATABASE_URI
-              value: {{ printf "postgres://inari:%s@%s:%s/inari?sslmode=disable"
-                  .Values.postgresql.auth.passwords.inari
-                  (include "inari-platform.postgresHost" .)
-                  (include "inari-platform.postgresPort" .) | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: inari-db
+                  key: inari-uri
             - name: INARI_NATS_URL
               value: nats://nats:4222
             - name: INARI_OPENFGA_URL
