@@ -1,0 +1,6 @@
+# chart-testing configuration
+target-branch: main
+chart-dirs:
+  - charts
+helm-extra-args: --timeout 600s
+debug: true
