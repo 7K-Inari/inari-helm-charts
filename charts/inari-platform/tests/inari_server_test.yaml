@@ -1,0 +1,42 @@
+suite: inari-server stub
+templates:
+  - inari-server/deployment.yaml
+  - inari-server/service.yaml
+  - inari-server/serviceaccount.yaml
+tests:
+  - it: renders nothing by default (images do not exist yet)
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: renders a Deployment with the configured image when enabled
+    template: inari-server/deployment.yaml
+    set:
+      inariServer.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/7k-inari/inari-server:0.0.0
+      - equal:
+          path: metadata.labels["app.kubernetes.io/part-of"]
+          value: inari-platform
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: inari-server
+  - it: renders a Service when enabled
+    template: inari-server/service.yaml
+    set:
+      inariServer.enabled: true
+    asserts:
+      - isKind:
+          of: Service
+  - it: renders a ServiceAccount when enabled
+    template: inari-server/serviceaccount.yaml
+    set:
+      inariServer.enabled: true
+    asserts:
+      - isKind:
+          of: ServiceAccount

@@ -1,0 +1,32 @@
+{{- if .Values.inariOperator.enabled }}
+# Minimal platform-scope permissions for the future operator:
+# managing Keycloak-realm ConfigMaps/Secrets and platform namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "inari-platform.fullname" . }}-operator
+  labels:
+    {{- include "inari-platform.componentLabels" (dict "root" . "component" "inari-operator") | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "inari-platform.fullname" . }}-operator
+  labels:
+    {{- include "inari-platform.componentLabels" (dict "root" . "component" "inari-operator") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "inari-platform.fullname" . }}-operator
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "inari-platform.fullname" . }}-operator
+    namespace: {{ .Release.Namespace }}
+{{- end }}

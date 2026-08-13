@@ -1,0 +1,37 @@
+{{- if .Values.keycloak.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "inari-platform.fullname" . }}-realm-verify
+  labels:
+    {{- include "inari-platform.componentLabels" (dict "root" . "component" "keycloak") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "5"
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "inari-platform.componentLabels" (dict "root" . "component" "keycloak") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: verify
+          image: curlimages/curl:8.10.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              for i in $(seq 1 60); do
+                code=$(curl -s -o /dev/null -w '%{http_code}' http://keycloak/realms/inari || true)
+                if [ "$code" = "200" ]; then
+                  echo "realm 'inari' is importable and reachable"
+                  exit 0
+                fi
+                echo "waiting for realm 'inari' (HTTP $code), attempt $i/60"
+                sleep 5
+              done
+              echo "realm 'inari' never became reachable" >&2
+              exit 1
+{{- end }}

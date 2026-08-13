@@ -1,0 +1,35 @@
+suite: keycloak realm import
+templates:
+  - keycloak/realm-inari-configmap.yaml
+  - keycloak/realm-verify-job.yaml
+tests:
+  - it: renders the realm import ConfigMap with the inari realm json
+    template: keycloak/realm-inari-configmap.yaml
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - exists:
+          path: data["realm-inari.json"]
+      - matchRegex:
+          path: data["realm-inari.json"]
+          pattern: '"realm": "inari"'
+      - matchRegex:
+          path: data["realm-inari.json"]
+          pattern: '"organizationsEnabled": true'
+  - it: renders the verify job as a post-install/post-upgrade hook targeting the keycloak service
+    template: keycloak/realm-verify-job.yaml
+    asserts:
+      - isKind:
+          of: Job
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: http://keycloak/realms/inari
+  - it: renders nothing when keycloak is disabled
+    set:
+      keycloak.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

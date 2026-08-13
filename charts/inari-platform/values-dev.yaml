@@ -1,0 +1,22 @@
+# kind-cluster friendly overrides for `make dev-up`.
+# Small footprints, but persistence stays enabled so backup/restore
+# and the DR drill are meaningful.
+postgresql:
+  instances: 1
+  storageSize: 1Gi
+
+keycloak:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+nats:
+  config:
+    jetstream:
+      fileStore:
+        pvc:
+          size: 1Gi
+
+openfga:
+  replicaCount: 1

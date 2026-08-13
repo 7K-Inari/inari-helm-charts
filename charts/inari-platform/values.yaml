@@ -1,0 +1,145 @@
+# Inari platform cluster umbrella chart.
+# Installs the day-0 control-plane infrastructure: PostgreSQL (CloudNativePG),
+# Keycloak (realm "inari"), NATS (JetStream) and OpenFGA.
+# inari-server / inari-operator ship as disabled stubs until their images exist.
+
+global:
+  # Extra labels applied to every first-party resource.
+  labels: {}
+
+# ---------------------------------------------------------------------------
+# PostgreSQL — CloudNativePG operator (subchart) + first-party Cluster CR.
+# The cluster name is fixed (default "postgresql") so sibling components can
+# rely on stable service names: <clusterName>-rw / <clusterName>-ro.
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  clusterName: postgresql
+  instances: 1
+  storageSize: 10Gi
+  storageClass: ""
+  # superuser bootstrap secret created by templates/postgres/secrets.yaml
+  auth:
+    superuserPassword: inari-dev-superuser
+    passwords:
+      inari: inari-dev
+      keycloak: inari-dev
+      openfga: inari-dev
+  # cloudnative-pg operator subchart values
+  cloudnative-pg:
+    # operator needs no CRD conversion webhook config for M0
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+
+# Escape hatch: skip the CNPG cluster and point everything at an external DB.
+# When postgresql.enabled=false, set these to your external endpoints.
+externalPostgres:
+  host: ""
+  port: 5432
+
+# ---------------------------------------------------------------------------
+# Keycloak — Bitnami subchart against the CNPG cluster.
+# ---------------------------------------------------------------------------
+keycloak:
+  enabled: true
+  fullnameOverride: keycloak
+  postgresql:
+    enabled: false
+  auth:
+    adminUser: admin
+    existingSecret: inari-db
+    passwordSecretKey: keycloak-admin-password
+  externalDatabase:
+    host: postgresql-rw
+    port: 5432
+    user: keycloak
+    database: keycloak
+    existingSecret: inari-db
+    existingSecretPasswordKey: keycloak-password
+  extraStartupArgs: "--import-realm"
+  extraVolumes:
+    - name: realm-import
+      configMap:
+        name: inari-realm-inari
+  extraVolumeMounts:
+    - name: realm-import
+      mountPath: /opt/bitnami/keycloak/data/import
+  production: false
+  http:
+    enabled: true
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+  # admin password for the "admin" user (dev default; override in real installs)
+  adminPassword: admin-dev
+
+# ---------------------------------------------------------------------------
+# NATS — official chart, JetStream enabled (internal event bus).
+# ---------------------------------------------------------------------------
+nats:
+  enabled: true
+  fullnameOverride: nats
+  config:
+    jetstream:
+      enabled: true
+      fileStore:
+        enabled: true
+        pvc:
+          size: 10Gi
+
+# ---------------------------------------------------------------------------
+# OpenFGA — official chart, postgres datastore on the CNPG cluster.
+# Toggle via openfgaEnabled (the openfga values schema rejects an `enabled` key).
+# ---------------------------------------------------------------------------
+openfgaEnabled: true
+openfga:
+  fullnameOverride: openfga
+  replicaCount: 1
+  datastore:
+    engine: postgres
+    existingSecret: inari-db
+    secretKeys:
+      uriKey: openfga-uri
+  playground:
+    enabled: false
+
+# ---------------------------------------------------------------------------
+# First-party components — stubs until images exist (plan §5.2).
+# ---------------------------------------------------------------------------
+inariServer:
+  enabled: false
+  image:
+    repository: ghcr.io/7k-inari/inari-server
+    tag: "0.0.0"
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 8080
+  resources: {}
+
+inariOperator:
+  enabled: false
+  image:
+    repository: ghcr.io/7k-inari/inari-operator
+    tag: "0.0.0"
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources: {}
+
+# ---------------------------------------------------------------------------
+# Values hooks for platform apps installed later from the Inari catalog
+# (cert-manager, ESO, ArgoCD, monitoring) — documented stubs only, no
+# templates consume these yet (plan §5.6).
+# ---------------------------------------------------------------------------
+certManager:
+  enabled: false
+externalSecrets:
+  enabled: false
+argocd:
+  enabled: false
+monitoring:
+  enabled: false

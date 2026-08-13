@@ -1,0 +1,69 @@
+suite: postgres (CloudNativePG) cluster
+templates:
+  - postgres/cluster.yaml
+  - postgres/secrets.yaml
+tests:
+  - it: renders a CNPG Cluster by default
+    template: postgres/cluster.yaml
+    asserts:
+      - isAPIVersion:
+          of: postgresql.cnpg.io/v1
+      - isKind:
+          of: Cluster
+  - it: cluster uses the configured name, instances and storage
+    template: postgres/cluster.yaml
+    set:
+      postgresql.clusterName: pg-main
+      postgresql.instances: 3
+      postgresql.storageSize: 5Gi
+    asserts:
+      - equal:
+          path: metadata.name
+          value: pg-main
+      - equal:
+          path: spec.instances
+          value: 3
+      - equal:
+          path: spec.storage.size
+          value: 5Gi
+  - it: bootstraps the inari database and creates keycloak and openfga databases
+    template: postgres/cluster.yaml
+    asserts:
+      - equal:
+          path: spec.bootstrap.initdb.database
+          value: inari
+      - equal:
+          path: spec.bootstrap.initdb.owner
+          value: inari
+      - matchRegex:
+          path: spec.bootstrap.initdb.postInitApplicationSQL[1]
+          pattern: CREATE DATABASE keycloak
+      - matchRegex:
+          path: spec.bootstrap.initdb.postInitApplicationSQL[3]
+          pattern: CREATE DATABASE openfga
+      - matchRegex:
+          path: spec.bootstrap.initdb.postInitApplicationSQL[0]
+          pattern: CREATE ROLE keycloak
+      - matchRegex:
+          path: spec.bootstrap.initdb.postInitApplicationSQL[2]
+          pattern: CREATE ROLE openfga
+  - it: renders the app secret with per-database passwords and the openfga datastore uri
+    template: postgres/secrets.yaml
+    set:
+      postgresql.auth.passwords.keycloak: kc-secret
+      postgresql.auth.passwords.openfga: fga-secret
+    asserts:
+      - isKind:
+          of: Secret
+      - equal:
+          path: stringData.keycloak-password
+          value: kc-secret
+      - matchRegex:
+          path: stringData.openfga-uri
+          pattern: "postgres://openfga:fga-secret@postgresql-rw:5432/openfga" 
+  - it: renders nothing when postgresql is disabled
+    asserts:
+      - hasDocuments:
+          count: 0
+    set:
+      postgresql.enabled: false

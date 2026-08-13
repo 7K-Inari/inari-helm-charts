@@ -1,0 +1,40 @@
+suite: inari-operator stub
+templates:
+  - inari-operator/deployment.yaml
+  - inari-operator/serviceaccount.yaml
+  - inari-operator/rbac.yaml
+tests:
+  - it: renders nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: renders a Deployment when enabled
+    template: inari-operator/deployment.yaml
+    set:
+      inariOperator.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: inari-operator
+  - it: renders a ServiceAccount when enabled
+    template: inari-operator/serviceaccount.yaml
+    set:
+      inariOperator.enabled: true
+    asserts:
+      - isKind:
+          of: ServiceAccount
+  - it: renders a ClusterRole when enabled
+    template: inari-operator/rbac.yaml
+    set:
+      inariOperator.enabled: true
+    asserts:
+      - isKind:
+          of: ClusterRole
+        documentIndex: 0
+      - isKind:
+          of: ClusterRoleBinding
+        documentIndex: 1
