@@ -61,6 +61,14 @@ tests:
       - matchRegex:
           path: stringData.openfga-uri
           pattern: "postgres://openfga:fga-secret@postgresql-rw:5432/openfga" 
+  - it: renders the inari database uri for the inari-server deployment
+    template: postgres/secrets.yaml
+    set:
+      postgresql.auth.passwords.inari: inari-secret
+    asserts:
+      - matchRegex:
+          path: stringData.inari-uri
+          pattern: "postgres://inari:inari-secret@postgresql-rw:5432/inari"
   - it: renders nothing when postgresql is disabled
     asserts:
       - hasDocuments:

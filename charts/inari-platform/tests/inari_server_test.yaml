@@ -26,6 +26,20 @@ tests:
       - equal:
           path: metadata.labels["app.kubernetes.io/component"]
           value: inari-server
+  - it: sources the database uri from the inari-db secret, not a plaintext env value
+    template: inari-server/deployment.yaml
+    set:
+      inariServer.enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: INARI_DATABASE_URI
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef.name
+          value: inari-db
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef.key
+          value: inari-uri
   - it: renders a Service when enabled
     template: inari-server/service.yaml
     set:
