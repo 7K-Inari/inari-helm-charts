@@ -70,7 +70,7 @@ jobs:
             kubectl -n inari get pods -o wide
             kubectl -n inari get cluster.postgresql.cnpg.io || true
             kubectl -n inari get jobs
-            for p in $(kubectl -n inari get pods -o jsonpath='{.items[?(@.status.phase!="Running")].metadata.name}'); do
+            for p in $(kubectl -n inari get pods -o jsonpath='{.items[*].metadata.name}'); do
               echo "=== describe $p ==="; kubectl -n inari describe pod "$p" | tail -30
               echo "=== logs $p ==="; kubectl -n inari logs "$p" --all-containers --tail=50 || true
             done
