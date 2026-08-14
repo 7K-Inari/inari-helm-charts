@@ -1,0 +1,10 @@
+# chart-testing configuration
+target-branch: main
+chart-dirs:
+  - charts
+chart-repos:
+  - cloudnative-pg=https://cloudnative-pg.github.io/charts
+  - nats=https://nats-io.github.io/k8s/helm/charts/
+  - openfga=https://openfga.github.io/helm-charts
+helm-extra-args: --timeout 600s
+debug: true

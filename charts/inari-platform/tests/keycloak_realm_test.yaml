@@ -1,0 +1,80 @@
+suite: keycloak operator, realm import
+templates:
+  - keycloak/operator.yaml
+  - keycloak/keycloak.yaml
+  - keycloak/realmimport-inari.yaml
+  - keycloak/admin-secret.yaml
+  - keycloak/realm-verify-job.yaml
+tests:
+  - it: renders the Keycloak CR wired to the CNPG cluster and inari-db secret
+    template: keycloak/keycloak.yaml
+    asserts:
+      - isAPIVersion:
+          of: k8s.keycloak.org/v2alpha1
+      - isKind:
+          of: Keycloak
+      - equal:
+          path: spec.db.host
+          value: postgresql-rw
+      - equal:
+          path: spec.db.database
+          value: keycloak
+      - equal:
+          path: spec.db.usernameSecret.name
+          value: inari-db
+      - equal:
+          path: spec.db.passwordSecret.key
+          value: keycloak-password
+      - equal:
+          path: spec.bootstrapAdmin.user.secret
+          value: inari-keycloak-admin
+  - it: renders the KeycloakRealmImport with the inari realm
+    template: keycloak/realmimport-inari.yaml
+    asserts:
+      - isKind:
+          of: KeycloakRealmImport
+      - equal:
+          path: spec.keycloakCRName
+          value: keycloak
+      - equal:
+          path: spec.realm.realm
+          value: inari
+      - equal:
+          path: spec.realm.organizationsEnabled
+          value: true
+  - it: renders the operator Deployment
+    template: keycloak/operator.yaml
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: metadata.name
+          value: keycloak-operator
+  - it: renders the bootstrap admin secret with username/password keys
+    template: keycloak/admin-secret.yaml
+    asserts:
+      - isKind:
+          of: Secret
+      - equal:
+          path: stringData.username
+          value: admin
+      - exists:
+          path: stringData.password
+  - it: renders the verify job as a post-install/post-upgrade hook targeting the keycloak service
+    template: keycloak/realm-verify-job.yaml
+    asserts:
+      - isKind:
+          of: Job
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: http://keycloak-service:8080/realms/inari
+  - it: renders nothing when keycloak is disabled
+    set:
+      keycloak.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

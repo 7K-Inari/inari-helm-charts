@@ -1,0 +1,33 @@
+{{- if .Values.inariOperator.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "inari-platform.fullname" . }}-operator
+  labels:
+    {{- include "inari-platform.componentLabels" (dict "root" . "component" "inari-operator") | nindent 4 }}
+spec:
+  replicas: {{ .Values.inariOperator.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: inari-operator
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        {{- include "inari-platform.componentLabels" (dict "root" . "component" "inari-operator") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "inari-platform.fullname" . }}-operator
+      containers:
+        - name: operator
+          image: "{{ .Values.inariOperator.image.repository }}:{{ .Values.inariOperator.image.tag }}"
+          imagePullPolicy: {{ .Values.inariOperator.image.pullPolicy }}
+          env:
+            - name: INARI_KEYCLOAK_URL
+              value: http://keycloak-service:8080
+            - name: INARI_KEYCLOAK_REALM
+              value: inari
+          {{- with .Values.inariOperator.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

@@ -1,0 +1,23 @@
+{
+  "realm": "inari",
+  "enabled": true,
+  "displayName": "Inari Platform",
+  "organizationsEnabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "verifyEmail": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "internationalizationEnabled": false,
+  "attributes": {
+    "org.inari/managed-by": "inari-helm-charts"
+  },
+  "defaultDefaultClientScopes": [
+    "web-origins",
+    "acr",
+    "profile",
+    "roles",
+    "email",
+    "organization"
+  ]
+}

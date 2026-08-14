@@ -1,0 +1,14 @@
+Inari platform stack installed.
+
+Components:
+  PostgreSQL (CNPG):  {{ include "inari-platform.postgresHost" . }} (cluster: {{ .Values.postgresql.clusterName }})
+  Keycloak:           http://keycloak-service:8080  (realm "inari", admin console at /admin)
+  NATS (JetStream):   nats://nats:4222
+  OpenFGA:            http://openfga:8080
+  inari-server:       {{ if .Values.inariServer.enabled }}ENABLED{{ else }}disabled (stub — image does not exist yet){{ end }}
+  inari-operator:     {{ if .Values.inariOperator.enabled }}ENABLED{{ else }}disabled (stub — image does not exist yet){{ end }}
+
+Smoke check:
+  kubectl run curl --rm -it --image=curlimages/curl -- http://keycloak-service:8080/realms/inari
+
+See docs/backup-restore.md for backup/restore and DR-drill procedures.

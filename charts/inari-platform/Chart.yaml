@@ -1,0 +1,34 @@
+apiVersion: v2
+name: inari-platform
+description: >-
+  Umbrella chart for the Inari platform cluster: Keycloak (realm "inari"),
+  PostgreSQL (CloudNativePG), NATS (JetStream), OpenFGA, plus
+  disabled-by-default inari-server and inari-operator stubs.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - inari
+  - idp
+  - platform
+home: https://github.com/7K-Inari/inari-helm-charts
+sources:
+  - https://github.com/7K-Inari/inari-helm-charts
+maintainers:
+  - name: 7K-Inari
+    url: https://github.com/7K-Inari
+dependencies:
+  - name: cloudnative-pg
+    version: 0.22.1
+    repository: https://cloudnative-pg.github.io/charts
+    condition: postgresql.enabled
+  - name: nats
+    version: 1.3.2
+    repository: https://nats-io.github.io/k8s/helm/charts/
+    condition: nats.enabled
+  - name: openfga
+    version: 0.2.27
+    repository: https://openfga.github.io/helm-charts
+    # openfga's values schema rejects an `enabled` key, so the toggle lives
+    # at the top level (`.Values.openfgaEnabled`) instead of under `openfga:`
+    condition: openfgaEnabled
