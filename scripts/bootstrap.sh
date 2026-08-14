@@ -31,7 +31,10 @@ if ! $SKIP_KIND; then
 fi
 
 log "building chart dependencies"
-helm dependency build "$CHART_DIR"
+# update (not build): works with the unmanaged repositories in Chart.yaml and
+# stays idempotent across re-runs (a stale Chart.lock makes build require
+# locally-configured helm repos)
+helm dependency update "$CHART_DIR"
 
 log "installing/upgrading release '$RELEASE' in namespace '$NAMESPACE'"
 helm upgrade --install "$RELEASE" "$CHART_DIR" \
