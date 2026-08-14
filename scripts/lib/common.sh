@@ -54,9 +54,8 @@ wait_cnpg_cluster() { # cluster timeout
 
 # Primary pod of a CNPG cluster.
 pg_primary_pod() {
-  kubectl_ns get pod -l "cnpg.io/cluster=${PG_CLUSTER},role=instance" \
-    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.labels.role}{"\n"}{end}' \
-    | awk '$2=="primary"{print $1; exit}'
+  kubectl_ns get pod -l "cnpg.io/cluster=${PG_CLUSTER},cnpg.io/instanceRole=primary" \
+    -o jsonpath='{.items[0].metadata.name}'
 }
 
 pg_exec() { # args... — run psql on the CNPG primary as the postgres user
