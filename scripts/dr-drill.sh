@@ -51,4 +51,6 @@ log "verifying restored state"
 verify_stack
 
 log "DR DRILL PASSED: backup restored and verified on a fresh cluster"
-$KEEP && log "cluster kept: kubectl config use-context kind-${DR_CLUSTER}"
+if $KEEP; then
+  log "cluster kept: kubectl config use-context kind-${DR_CLUSTER}"
+fi
