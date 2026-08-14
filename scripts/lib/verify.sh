@@ -6,10 +6,10 @@
 verify_workloads() {
   log "verifying workloads are ready"
   wait_cnpg_cluster "$PG_CLUSTER" 600
-  wait_statefulset keycloak 600
-  wait_statefulset nats 300
-  wait_deployment nats-box 300
-  wait_deployment openfga 300
+  wait_statefulset keycloak 600s
+  wait_statefulset nats 300s
+  wait_deployment nats-box 300s
+  wait_deployment openfga 300s
 }
 
 verify_keycloak_realm() {
