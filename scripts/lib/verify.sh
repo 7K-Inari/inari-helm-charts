@@ -17,7 +17,7 @@ verify_keycloak_realm() {
   kubectl_ns run inari-verify-realm --rm -i --restart=Never \
     --image=curlimages/curl:8.10.1 --quiet -- \
     -fsS --retry 30 --retry-delay 5 --retry-all-errors \
-    http://keycloak/realms/inari > /dev/null \
+    http://keycloak-service:8080/realms/inari > /dev/null \
     || die "Keycloak realm 'inari' is not reachable"
 }
 

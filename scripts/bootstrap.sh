@@ -45,5 +45,5 @@ helm upgrade --install "$RELEASE" "$CHART_DIR" \
 verify_stack
 
 log "bootstrap complete."
-log "  Keycloak admin console: kubectl -n $NAMESPACE port-forward svc/keycloak 8080:80"
+log "  Keycloak admin console: kubectl -n $NAMESPACE port-forward svc/keycloak-service 8080:8080"
 log "  (admin credentials from secret 'inari-db', key 'keycloak-admin-password')"

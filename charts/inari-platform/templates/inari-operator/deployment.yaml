@@ -23,7 +23,7 @@ spec:
           imagePullPolicy: {{ .Values.inariOperator.image.pullPolicy }}
           env:
             - name: INARI_KEYCLOAK_URL
-              value: http://keycloak
+              value: http://keycloak-service:8080
             - name: INARI_KEYCLOAK_REALM
               value: inari
           {{- with .Values.inariOperator.resources }}

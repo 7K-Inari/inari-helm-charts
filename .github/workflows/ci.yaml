@@ -84,7 +84,7 @@ jobs:
           kubectl -n inari run smoke --rm -i --restart=Never \
             --image=curlimages/curl:8.10.1 --quiet -- \
             -fsS --retry 30 --retry-delay 5 --retry-all-errors \
-            http://keycloak/realms/inari
+            http://keycloak-service:8080/realms/inari
 
   backup-restore-test:
     runs-on: ubuntu-latest

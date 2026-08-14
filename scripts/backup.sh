@@ -34,12 +34,12 @@ pg_dump_db openfga "$WORK/postgres/openfga.sql"
 
 log "exporting Keycloak realm 'inari' (admin REST partial-export)"
 KC_ADMIN_PW="$(kubectl_ns get secret inari-db -o jsonpath='{.data.keycloak-admin-password}' | base64 -d)"
-KC_TOKEN="$(box "curl -sS -X POST http://keycloak/realms/master/protocol/openid-connect/token \
+KC_TOKEN="$(box "curl -sS -X POST http://keycloak-service:8080/realms/master/protocol/openid-connect/token \
   -H 'Content-Type: application/x-www-form-urlencoded' \
   -d 'grant_type=password&client_id=admin-cli&username=admin&password=${KC_ADMIN_PW}' \
   | jq -r .access_token")"
 [[ "$KC_TOKEN" != "null" && -n "$KC_TOKEN" ]] || die "could not obtain Keycloak admin token"
-box "curl -sS -X POST 'http://keycloak/admin/realms/inari/partial-export?exportClients=true&exportGroupsAndRoles=true' \
+box "curl -sS -X POST 'http://keycloak-service:8080/admin/realms/inari/partial-export?exportClients=true&exportGroupsAndRoles=true' \
   -H 'Accept: application/json' -H 'Authorization: Bearer ${KC_TOKEN}'" \
   | jq '.' > "$WORK/keycloak/realm-inari.json"
 jq -e '.realm == "inari"' "$WORK/keycloak/realm-inari.json" > /dev/null \

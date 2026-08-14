@@ -2,7 +2,9 @@ suite: chart defaults
 templates:
   - postgres/cluster.yaml
   - postgres/secrets.yaml
-  - keycloak/realm-inari-configmap.yaml
+  - keycloak/keycloak.yaml
+  - keycloak/realmimport-inari.yaml
+  - keycloak/admin-secret.yaml
   - keycloak/realm-verify-job.yaml
 tests:
   - it: every rendered first-party resource carries standard labels

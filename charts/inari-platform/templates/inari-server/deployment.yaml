@@ -35,7 +35,7 @@ spec:
             - name: INARI_OPENFGA_URL
               value: http://openfga:8080
             - name: INARI_OIDC_ISSUER
-              value: http://keycloak/realms/inari
+              value: http://keycloak-service:8080/realms/inari
           {{- with .Values.inariServer.resources }}
           resources:
             {{- toYaml . | nindent 12 }}

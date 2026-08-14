@@ -24,7 +24,7 @@ spec:
           args:
             - |
               for i in $(seq 1 60); do
-                code=$(curl -s -o /dev/null -w '%{http_code}' http://keycloak/realms/inari || true)
+                code=$(curl -s -o /dev/null -w '%{http_code}' http://keycloak-service:8080/realms/inari || true)
                 if [ "$code" = "200" ]; then
                   echo "realm 'inari' is importable and reachable"
                   exit 0
