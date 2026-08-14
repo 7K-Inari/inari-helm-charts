@@ -10,6 +10,8 @@ on:
 permissions:
   contents: write
   packages: write
+  # release-please comments on the merged Release PR (PRs are issues).
+  issues: write
 
 concurrency:
   group: release-main
