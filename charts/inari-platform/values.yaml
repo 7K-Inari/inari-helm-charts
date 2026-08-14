@@ -6,6 +6,10 @@
 global:
   # Extra labels applied to every first-party resource.
   labels: {}
+  # Required by the Bitnami keycloak subchart: its pinned image tag now lives
+  # in the bitnamilegacy org, which Bitnami's image verification flags.
+  security:
+    allowInsecureImages: true
 
 # ---------------------------------------------------------------------------
 # PostgreSQL — CloudNativePG operator (subchart) + first-party Cluster CR.
@@ -51,6 +55,10 @@ externalPostgres:
 keycloak:
   enabled: true
   fullnameOverride: keycloak
+  # Bitnami moved non-latest tags to the bitnamilegacy Docker Hub org
+  # (docker.io/bitnami/keycloak:26.1.0-... no longer exists).
+  image:
+    repository: bitnamilegacy/keycloak
   postgresql:
     enabled: false
   auth:
@@ -109,6 +117,9 @@ openfga:
     existingSecret: inari-db
     secretKeys:
       uriKey: openfga-uri
+    # run migrations as an init container instead of a Job + wait-for init
+    # container — fewer moving parts, no jobs RBAC needed
+    migrationType: initContainer
   playground:
     enabled: false
 
