@@ -40,10 +40,26 @@ pg_exec -v ON_ERROR_STOP=1 -d openfga -f - < "$BK/postgres/openfga.sql" \
 # The dumps are restored as the postgres superuser (--no-owner), so the
 # recreated objects are owned by postgres; hand them back to the app roles
 # or OpenFGA migrations / the control plane fail with permission errors.
-pg_exec -v ON_ERROR_STOP=1 -d inari -c "REASSIGN OWNED BY postgres TO inari" \
-  || die "could not reassign ownership in database 'inari'"
-pg_exec -v ON_ERROR_STOP=1 -d openfga -c "REASSIGN OWNED BY postgres TO openfga" \
-  || die "could not reassign ownership in database 'openfga'"
+# (REASSIGN OWNED on the postgres role is rejected — it owns system objects.)
+pg_chown_db() { # db role
+  pg_exec -v ON_ERROR_STOP=1 -d "$1" <<SQL
+DO \$\$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT quote_ident(schemaname) AS s, quote_ident(tablename) AS n
+           FROM pg_tables WHERE schemaname NOT LIKE 'pg_%' AND schemaname <> 'information_schema'
+  LOOP EXECUTE format('ALTER TABLE %s.%s OWNER TO %I', r.s, r.n, '$2'); END LOOP;
+  FOR r IN SELECT quote_ident(schemaname) AS s, quote_ident(sequencename) AS n
+           FROM pg_sequences WHERE schemaname NOT LIKE 'pg_%' AND schemaname <> 'information_schema'
+  LOOP EXECUTE format('ALTER SEQUENCE %s.%s OWNER TO %I', r.s, r.n, '$2'); END LOOP;
+  FOR r IN SELECT quote_ident(schemaname) AS s, quote_ident(viewname) AS n
+           FROM pg_views WHERE schemaname NOT LIKE 'pg_%' AND schemaname <> 'information_schema'
+  LOOP EXECUTE format('ALTER VIEW %s.%s OWNER TO %I', r.s, r.n, '$2'); END LOOP;
+END \$\$;
+SQL
+}
+pg_chown_db inari inari || die "could not reassign ownership in database 'inari'"
+pg_chown_db openfga openfga || die "could not reassign ownership in database 'openfga'"
 
 # The openfga database was dropped/recreated under the running server —
 # restart it so the migration init container re-applies the schema cleanly.
