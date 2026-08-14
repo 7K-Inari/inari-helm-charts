@@ -40,9 +40,13 @@ verify_openfga() {
 
 verify_nats() {
   log "verifying NATS JetStream"
-  # /jsz on the monitoring port only serves when JetStream is enabled
+  # /jsz on the monitoring port only serves when JetStream is enabled.
+  # The monitor port is pod-local (not on the Service), so curl the pod IP.
+  local ip
+  ip=$(kubectl_ns get pod nats-0 -o jsonpath='{.status.podIP}')
+  [[ -n "$ip" ]] || die "could not get nats-0 pod IP"
   kubectl_ns exec deployment/nats-box -- \
-    curl -sfS http://nats:8222/jsz > /dev/null \
+    curl -sfS "http://${ip}:8222/jsz" > /dev/null \
     || die "NATS JetStream is not enabled/reachable"
 }
 
