@@ -5,8 +5,8 @@ description: >-
   PostgreSQL (CloudNativePG), NATS (JetStream), OpenFGA, plus
   disabled-by-default inari-server and inari-operator stubs.
 type: application
-version: 0.1.0 # x-release-please-version
-appVersion: "0.1.0" # x-release-please-version
+version: 0.1.0  # x-release-please-version
+appVersion: "0.1.0"  # x-release-please-version
 keywords:
   - inari
   - idp
