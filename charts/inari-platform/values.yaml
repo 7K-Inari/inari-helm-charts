@@ -25,13 +25,19 @@ postgresql:
       inari: inari-dev
       keycloak: inari-dev
       openfga: inari-dev
-  # cloudnative-pg operator subchart values
-  cloudnative-pg:
-    # operator needs no CRD conversion webhook config for M0
-    resources:
-      requests:
-        cpu: 50m
-        memory: 128Mi
+# cloudnative-pg operator subchart values (top-level key — Helm passes values
+# to subcharts by chart name, not under the `postgresql` section).
+# CRDs are vendored in this chart's crds/ directory so Helm installs them
+# before any template (including our Cluster CR) — disable the subchart's
+# copy to avoid managing them twice.
+cloudnative-pg:
+  crds:
+    create: false
+  # operator needs no CRD conversion webhook config for M0
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
 
 # Escape hatch: skip the CNPG cluster and point everything at an external DB.
 # When postgresql.enabled=false, set these to your external endpoints.
