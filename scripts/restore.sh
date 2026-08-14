@@ -38,6 +38,12 @@ pg_exec -v ON_ERROR_STOP=1 -d inari -f - < "$BK/postgres/inari.sql" \
 pg_exec -v ON_ERROR_STOP=1 -d openfga -f - < "$BK/postgres/openfga.sql" \
   || die "restore of database 'openfga' failed"
 
+# The openfga database was dropped/recreated under the running server —
+# restart it so the migration init container re-applies the schema cleanly.
+log "restarting OpenFGA to re-run migrations on the restored database"
+kubectl_ns rollout restart deployment/openfga
+wait_deployment openfga 300s
+
 log "restoring Keycloak realm 'inari'"
 KC_ADMIN_PW="$(kubectl_ns get secret inari-db -o jsonpath='{.data.keycloak-admin-password}' | base64 -d)"
 KC_TOKEN="$(box "curl -sS -X POST http://keycloak/realms/master/protocol/openid-connect/token \
