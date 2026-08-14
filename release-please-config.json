@@ -1,0 +1,16 @@
+{
+  "separate-pull-requests": false,
+  "bump-minor-pre-major": true,
+  "include-component-in-tag": true,
+  "tag-separator": "-v",
+  "packages": {
+    "charts/inari-platform": {
+      "release-type": "simple",
+      "component": "inari-platform",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "charts/inari-platform/Chart.yaml"
+      ]
+    }
+  }
+}

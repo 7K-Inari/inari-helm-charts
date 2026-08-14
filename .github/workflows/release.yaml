@@ -1,46 +1,92 @@
 name: release
 
+# Runs after a Release PR is merged to main: creates per-chart tags +
+# GitHub Releases via release-please, then publishes the released charts
+# to GHCR as OCI artifacts. Not tag-triggered: tags are created here.
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
 
 permissions:
   contents: write
   packages: write
 
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      paths_released: ${{ steps.rp.outputs.paths_released || '[]' }}
+    steps:
+      # On a release-merge push this creates the per-chart tags
+      # (e.g. inari-platform-v0.2.0) and GitHub Releases; on ordinary
+      # commits it is a no-op (release-please.yml maintains the PR).
+      - uses: googleapis/release-please-action@v4
+        id: rp
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          skip-github-release: false
+
   publish:
+    needs: detect
+    if: needs.detect.outputs.paths_released != '' && needs.detect.outputs.paths_released != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        chart-path: ${{ fromJSON(needs.detect.outputs.paths_released) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: azure/setup-helm@v4
         with:
           version: v3.18.6
 
-      - name: Verify tag matches chart version
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.7.0
+        with:
+          version: v3.12.0
+
+      - name: Resolve chart name and version
+        id: chart
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          CHART_VERSION="$(grep '^version:' charts/inari-platform/Chart.yaml | awk '{print $2}')"
-          if [ "$TAG" != "$CHART_VERSION" ]; then
-            echo "::error::tag v$TAG does not match chart version $CHART_VERSION"
-            exit 1
-          fi
+          CHART_PATH="${{ matrix.chart-path }}"
+          echo "name=$(basename "$CHART_PATH")" >> "$GITHUB_OUTPUT"
+          echo "version=$(jq -r '."'$CHART_PATH'"' .release-please-manifest.json)" >> "$GITHUB_OUTPUT"
+
+      - name: chart-testing lint
+        run: ct lint --config ct.yaml --charts "${{ matrix.chart-path }}" --validate-maintainers=false
 
       - name: Package chart
         run: |
-          helm dependency build charts/inari-platform
+          helm dependency build "${{ matrix.chart-path }}"
           mkdir -p dist
-          helm package charts/inari-platform -d dist
+          helm package "${{ matrix.chart-path }}" -d dist
+
+      - name: Verify package version matches manifest
+        run: |
+          ls "dist/${{ steps.chart.outputs.name }}-${{ steps.chart.outputs.version }}.tgz"
 
       - name: Login to ghcr.io
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Push chart as OCI artifact
-        run: helm push dist/inari-platform-*.tgz oci://ghcr.io/7k-inari/charts
+        run: helm push "dist/${{ steps.chart.outputs.name }}-${{ steps.chart.outputs.version }}.tgz" oci://ghcr.io/7k-inari/charts
 
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*.tgz
-          generate_release_notes: true
+      - name: Verify published chart
+        run: |
+          TAG="${{ steps.chart.outputs.version }}"
+          for i in $(seq 1 12); do
+            if helm show chart "oci://ghcr.io/7k-inari/charts/${{ steps.chart.outputs.name }}" --version "$TAG" > /dev/null 2>&1; then
+              echo "Published ${{ steps.chart.outputs.name }}:$TAG verified"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::chart not visible in GHCR after push"
+          exit 1
