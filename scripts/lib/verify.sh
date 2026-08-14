@@ -40,10 +40,10 @@ verify_openfga() {
 
 verify_nats() {
   log "verifying NATS JetStream"
-  local report
-  report=$(kubectl_ns exec deployment/nats-box -- \
-    nats server report jetstream 2>/dev/null || true)
-  [[ -n "$report" ]] || die "NATS JetStream is not enabled/reachable"
+  # /jsz on the monitoring port only serves when JetStream is enabled
+  kubectl_ns exec deployment/nats-box -- \
+    curl -sfS http://nats:8222/jsz > /dev/null \
+    || die "NATS JetStream is not enabled/reachable"
 }
 
 verify_stack() {
