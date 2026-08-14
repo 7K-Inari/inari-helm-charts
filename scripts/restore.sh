@@ -37,6 +37,13 @@ pg_exec -v ON_ERROR_STOP=1 -d inari -f - < "$BK/postgres/inari.sql" \
   || die "restore of database 'inari' failed"
 pg_exec -v ON_ERROR_STOP=1 -d openfga -f - < "$BK/postgres/openfga.sql" \
   || die "restore of database 'openfga' failed"
+# The dumps are restored as the postgres superuser (--no-owner), so the
+# recreated objects are owned by postgres; hand them back to the app roles
+# or OpenFGA migrations / the control plane fail with permission errors.
+pg_exec -v ON_ERROR_STOP=1 -d inari -c "REASSIGN OWNED BY postgres TO inari" \
+  || die "could not reassign ownership in database 'inari'"
+pg_exec -v ON_ERROR_STOP=1 -d openfga -c "REASSIGN OWNED BY postgres TO openfga" \
+  || die "could not reassign ownership in database 'openfga'"
 
 # The openfga database was dropped/recreated under the running server —
 # restart it so the migration init container re-applies the schema cleanly.

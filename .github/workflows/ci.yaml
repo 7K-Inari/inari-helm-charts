@@ -109,4 +109,11 @@ jobs:
         run: scripts/backup.sh "$RUNNER_TEMP/backups"
 
       - name: DR drill (restore + verify on a fresh kind cluster)
-        run: scripts/dr-drill.sh "$RUNNER_TEMP"/backups/inari-backup-*.tgz
+        run: |
+          if ! scripts/dr-drill.sh "$RUNNER_TEMP"/backups/inari-backup-*.tgz; then
+            kubectl -n inari get pods -o wide
+            for p in $(kubectl -n inari get pods -o jsonpath='{.items[*].metadata.name}'); do
+              echo "=== logs $p ==="; kubectl -n inari logs "$p" --all-containers --tail=50 || true
+            done
+            exit 1
+          fi
