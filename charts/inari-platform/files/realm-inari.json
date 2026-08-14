@@ -12,7 +12,7 @@
   "attributes": {
     "org.inari/managed-by": "inari-helm-charts"
   },
-  "defaultScopes": [
+  "defaultDefaultClientScopes": [
     "web-origins",
     "acr",
     "profile",
