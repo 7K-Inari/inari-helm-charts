@@ -5,8 +5,8 @@ description: >-
   PostgreSQL (CloudNativePG), NATS (JetStream), OpenFGA, plus
   disabled-by-default inari-server and inari-operator stubs.
 type: application
-version: 0.3.0  # x-release-please-version
-appVersion: "0.3.0"  # x-release-please-version
+version: 0.3.1
+appVersion: 0.3.0
 keywords:
   - inari
   - idp
@@ -29,6 +29,4 @@ dependencies:
   - name: openfga
     version: 0.2.27
     repository: https://openfga.github.io/helm-charts
-    # openfga's values schema rejects an `enabled` key, so the toggle lives
-    # at the top level (`.Values.openfgaEnabled`) instead of under `openfga:`
     condition: openfgaEnabled

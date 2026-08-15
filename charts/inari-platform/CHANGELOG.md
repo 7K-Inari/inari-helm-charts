@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.3.0...inari-platform-v0.3.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* **ci:** extra-files is package-path-relative; repair Chart.yaml to 0.3.0 ([9f524b5](https://github.com/7K-Inari/inari-helm-charts/commit/9f524b529ef1edbd8c93b5fd40cfb906704af02c))
+* **ci:** extra-files path is package-relative; repair Chart.yaml 0.3.0 ([eb2f90b](https://github.com/7K-Inari/inari-helm-charts/commit/eb2f90b2f4b69fc09d986875b9d87624170456bc))
+
 ## [0.3.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.2.0...inari-platform-v0.3.0) (2026-08-15)
 
 
