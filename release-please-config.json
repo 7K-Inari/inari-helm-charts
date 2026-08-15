@@ -10,7 +10,7 @@
       "component": "inari-platform",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        "charts/inari-platform/Chart.yaml"
+        "Chart.yaml"
       ]
     }
   }
