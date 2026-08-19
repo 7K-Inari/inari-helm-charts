@@ -42,6 +42,45 @@ tests:
       - equal:
           path: spec.realm.organizationsEnabled
           value: true
+  - it: includes the basic scope so tokens carry a sub claim
+    template: keycloak/realmimport-inari.yaml
+    asserts:
+      - contains:
+          path: spec.realm.defaultDefaultClientScopes
+          content: basic
+      - contains:
+          path: spec.realm.clients[?(@.clientId == "inari-server")].defaultClientScopes
+          content: basic
+      - contains:
+          path: spec.realm.clients[?(@.clientId == "inari-ui")].defaultClientScopes
+          content: basic
+  - it: maps aud=inari-server into access tokens for both clients
+    template: keycloak/realmimport-inari.yaml
+    asserts:
+      - contains:
+          path: spec.realm.clients[?(@.clientId == "inari-server")].protocolMappers
+          content:
+            name: audience-inari-server
+            protocol: openid-connect
+            protocolMapper: oidc-audience-mapper
+            consentRequired: false
+            config:
+              included.client.audience: inari-server
+              access.token.claim: "true"
+              id.token.claim: "false"
+              userinfo.token.claim: "false"
+      - contains:
+          path: spec.realm.clients[?(@.clientId == "inari-ui")].protocolMappers
+          content:
+            name: audience-inari-server
+            protocol: openid-connect
+            protocolMapper: oidc-audience-mapper
+            consentRequired: false
+            config:
+              included.client.audience: inari-server
+              access.token.claim: "true"
+              id.token.claim: "false"
+              userinfo.token.claim: "false"
   - it: renders the operator Deployment
     template: keycloak/operator.yaml
     documentSelector:
