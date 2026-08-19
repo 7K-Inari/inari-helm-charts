@@ -19,5 +19,63 @@
     "roles",
     "email",
     "organization"
+  ],
+  "users": [
+    {
+      "username": "dev-admin",
+      "enabled": true,
+      "email": "dev-admin@inari.local",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "dev-admin",
+          "temporary": false
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "inari-server",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:8080/*",
+        "http://keycloak.local:8080/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8080",
+        "http://keycloak.local:8080"
+      ],
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "organization"
+      ],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "inari-ui",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173"
+      ],
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "organization"
+      ],
+      "optionalClientScopes": []
+    }
   ]
 }
