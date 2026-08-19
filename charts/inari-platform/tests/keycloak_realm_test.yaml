@@ -28,6 +28,68 @@ tests:
       - equal:
           path: spec.bootstrapAdmin.user.secret
           value: inari-keycloak-admin
+  - it: pins the keycloak image and disables startOptimized for the custom image
+    template: keycloak/keycloak.yaml
+    asserts:
+      - equal:
+          path: spec.image
+          value: quay.io/keycloak/keycloak:26.3.2
+      - equal:
+          path: spec.startOptimized
+          value: false
+  - it: allows overriding the keycloak image
+    template: keycloak/keycloak.yaml
+    set:
+      keycloak.image: quay.io/keycloak/keycloak:99.0.0
+    asserts:
+      - equal:
+          path: spec.image
+          value: quay.io/keycloak/keycloak:99.0.0
+  - it: renders no hostname by default with strict disabled
+    template: keycloak/keycloak.yaml
+    asserts:
+      - notExists:
+          path: spec.hostname.hostname
+      - equal:
+          path: spec.hostname.strict
+          value: false
+  - it: pins the issuer hostname when keycloak.hostname.hostname is set
+    template: keycloak/keycloak.yaml
+    set:
+      keycloak.hostname.hostname: keycloak.local:8080
+      keycloak.hostname.strict: true
+    asserts:
+      - equal:
+          path: spec.hostname.hostname
+          value: keycloak.local:8080
+      - equal:
+          path: spec.hostname.strict
+          value: true
+  - it: pins the operator deployment and related keycloak image
+    template: keycloak/operator.yaml
+    documentSelector:
+      path: kind
+      value: Deployment
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: quay.io/keycloak/keycloak-operator:26.3.2
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: RELATED_IMAGE_KEYCLOAK
+            value: quay.io/keycloak/keycloak:26.3.2
+  - it: allows overriding the operator image
+    template: keycloak/operator.yaml
+    documentSelector:
+      path: kind
+      value: Deployment
+    set:
+      keycloak.operatorImage: quay.io/keycloak/keycloak-operator:99.0.0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: quay.io/keycloak/keycloak-operator:99.0.0
   - it: renders the KeycloakRealmImport with the inari realm
     template: keycloak/realmimport-inari.yaml
     asserts:

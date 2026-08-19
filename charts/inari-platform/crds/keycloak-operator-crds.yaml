@@ -187,6 +187,11 @@ spec:
                 description: "In this section you can configure Keycloak features\
                   \ related to HTTP and HTTPS"
                 properties:
+                  annotations:
+                    additionalProperties:
+                      type: "string"
+                    description: "Annotations to be appended to the Service object"
+                    type: "object"
                   httpEnabled:
                     description: "Enables the HTTP listener."
                     type: "boolean"
@@ -196,6 +201,11 @@ spec:
                   httpsPort:
                     description: "The used HTTPS port."
                     type: "integer"
+                  labels:
+                    additionalProperties:
+                      type: "string"
+                    description: "Labels to be appended to the Service object"
+                    type: "object"
                   tlsSecret:
                     description: "A secret containing the TLS configuration for HTTPS.\
                       \ Reference: https://kubernetes.io/docs/concepts/configuration/secret/#tls-secrets."
@@ -240,11 +250,21 @@ spec:
               instances:
                 description: "Number of Keycloak instances. Default is 1."
                 type: "integer"
+              livenessProbe:
+                description: "Configuration for liveness probe, by default it is 10\
+                  \ for periodSeconds and 3 for failureThreshold"
+                properties:
+                  failureThreshold:
+                    type: "integer"
+                  periodSeconds:
+                    type: "integer"
+                type: "object"
               networkPolicy:
                 description: "Controls the ingress traffic flow into Keycloak pods."
                 properties:
                   enabled:
-                    description: "Enables or disable the ingress traffic control."
+                    default: true
+                    description: "Enables or disables the ingress traffic control."
                     type: "boolean"
                   http:
                     description: "A list of sources which should be able to access\
@@ -440,6 +460,15 @@ spec:
                       \ security vulnerabilities."
                     type: "string"
                 type: "object"
+              readinessProbe:
+                description: "Configuration for readiness probe, by default it is\
+                  \ 10 for periodSeconds and 3 for failureThreshold"
+                properties:
+                  failureThreshold:
+                    type: "integer"
+                  periodSeconds:
+                    type: "integer"
+                type: "object"
               resources:
                 description: "Compute Resources required by Keycloak container"
                 properties:
@@ -447,6 +476,8 @@ spec:
                     items:
                       properties:
                         name:
+                          type: "string"
+                        request:
                           type: "string"
                       type: "object"
                     type: "array"
@@ -860,6 +891,15 @@ spec:
                   \ the start command. If left unspecified the operator will assume\
                   \ custom images have already been augmented."
                 type: "boolean"
+              startupProbe:
+                description: "Configuration for startup probe, by default it is 1\
+                  \ for periodSeconds and 600 for failureThreshold"
+                properties:
+                  failureThreshold:
+                    type: "integer"
+                  periodSeconds:
+                    type: "integer"
+                type: "object"
               tracing:
                 description: "In this section you can configure OpenTelemetry Tracing\
                   \ for Keycloak."
@@ -888,7 +928,7 @@ spec:
                     type: "object"
                   samplerRatio:
                     description: "OpenTelemetry sampler ratio. Probability that a\
-                      \ span will be sampled. Expected double value in interval <0,1)."
+                      \ span will be sampled. Expected double value in interval [0,1]."
                     type: "number"
                   samplerType:
                     description: "OpenTelemetry sampler to use for tracing (default\
@@ -1685,6 +1725,8 @@ spec:
                                         properties:
                                           name:
                                             type: "string"
+                                          request:
+                                            type: "string"
                                         type: "object"
                                       type: "array"
                                     limits:
@@ -2236,6 +2278,8 @@ spec:
                                       items:
                                         properties:
                                           name:
+                                            type: "string"
+                                          request:
                                             type: "string"
                                         type: "object"
                                       type: "array"
@@ -2795,6 +2839,8 @@ spec:
                                         properties:
                                           name:
                                             type: "string"
+                                          request:
+                                            type: "string"
                                         type: "object"
                                       type: "array"
                                     limits:
@@ -3018,15 +3064,38 @@ spec:
                               properties:
                                 name:
                                   type: "string"
-                                source:
-                                  properties:
-                                    resourceClaimName:
-                                      type: "string"
-                                    resourceClaimTemplateName:
-                                      type: "string"
-                                  type: "object"
+                                resourceClaimName:
+                                  type: "string"
+                                resourceClaimTemplateName:
+                                  type: "string"
                               type: "object"
                             type: "array"
+                          resources:
+                            properties:
+                              claims:
+                                items:
+                                  properties:
+                                    name:
+                                      type: "string"
+                                    request:
+                                      type: "string"
+                                  type: "object"
+                                type: "array"
+                              limits:
+                                additionalProperties:
+                                  anyOf:
+                                  - type: "integer"
+                                  - type: "string"
+                                  x-kubernetes-int-or-string: true
+                                type: "object"
+                              requests:
+                                additionalProperties:
+                                  anyOf:
+                                  - type: "integer"
+                                  - type: "string"
+                                  x-kubernetes-int-or-string: true
+                                type: "object"
+                            type: "object"
                           restartPolicy:
                             type: "string"
                           runtimeClassName:
@@ -3059,6 +3128,8 @@ spec:
                                 type: "boolean"
                               runAsUser:
                                 type: "integer"
+                              seLinuxChangePolicy:
+                                type: "string"
                               seLinuxOptions:
                                 properties:
                                   level:
@@ -3081,6 +3152,8 @@ spec:
                                 items:
                                   type: "integer"
                                 type: "array"
+                              supplementalGroupsPolicy:
+                                type: "string"
                               sysctls:
                                 items:
                                   properties:
@@ -3550,6 +3623,13 @@ spec:
                                     type:
                                       type: "string"
                                   type: "object"
+                                image:
+                                  properties:
+                                    pullPolicy:
+                                      type: "string"
+                                    reference:
+                                      type: "string"
+                                  type: "object"
                                 iscsi:
                                   properties:
                                     chapAuthDiscovery:
@@ -3848,6 +3928,26 @@ spec:
                         type: "object"
                     type: "object"
                 type: "object"
+              update:
+                description: "Configuration related to Keycloak deployment updates."
+                properties:
+                  revision:
+                    description: "When use the Explicit strategy, the revision signals\
+                      \ if a rolling update can be used or not."
+                    type: "string"
+                  strategy:
+                    default: "RecreateOnImageChange"
+                    description: "Sets the update strategy to use."
+                    enum:
+                    - "Auto"
+                    - "Explicit"
+                    - "RecreateOnImageChange"
+                    type: "string"
+                type: "object"
+                x-kubernetes-validations:
+                - message: "The 'revision' field is required when 'Explicit' strategy\
+                    \ is used"
+                  rule: "self.strategy != 'Explicit' || has(self.revision)"
             type: "object"
           status:
             properties:
@@ -3974,6 +4074,14 @@ spec:
                               resourceTypes:
                                 additionalProperties:
                                   properties:
+                                    groupType:
+                                      type: "string"
+                                    scopeAliases:
+                                      additionalProperties:
+                                        items:
+                                          type: "string"
+                                        type: "array"
+                                      type: "object"
                                     scopes:
                                       items:
                                         type: "string"
@@ -4325,6 +4433,14 @@ spec:
                                 resourceTypes:
                                   additionalProperties:
                                     properties:
+                                      groupType:
+                                        type: "string"
+                                      scopeAliases:
+                                        additionalProperties:
+                                          items:
+                                            type: "string"
+                                          type: "array"
+                                        type: "object"
                                       scopes:
                                         items:
                                           type: "string"
@@ -4874,6 +4990,14 @@ spec:
                                 resourceTypes:
                                   additionalProperties:
                                     properties:
+                                      groupType:
+                                        type: "string"
+                                      scopeAliases:
+                                        additionalProperties:
+                                          items:
+                                            type: "string"
+                                          type: "array"
+                                        type: "object"
                                       scopes:
                                         items:
                                           type: "string"
@@ -5565,6 +5689,8 @@ spec:
                                 type: "string"
                               digits:
                                 type: "integer"
+                              federationLink:
+                                type: "string"
                               hashIterations:
                                 type: "integer"
                               hashedSaltedValue:
@@ -5721,6 +5847,8 @@ spec:
                               type: "string"
                             type: "array"
                           type: "object"
+                        description:
+                          type: "string"
                         id:
                           type: "string"
                         name:
@@ -5754,6 +5882,8 @@ spec:
                                     type: "string"
                                   type: "array"
                                 type: "object"
+                              description:
+                                type: "string"
                               id:
                                 type: "string"
                               name:
@@ -5787,6 +5917,8 @@ spec:
                                           type: "string"
                                         type: "array"
                                       type: "object"
+                                    description:
+                                      type: "string"
                                     id:
                                       type: "string"
                                     name:
@@ -5820,6 +5952,8 @@ spec:
                                                 type: "string"
                                               type: "array"
                                             type: "object"
+                                          description:
+                                            type: "string"
                                           id:
                                             type: "string"
                                           name:
@@ -5853,6 +5987,8 @@ spec:
                                                       type: "string"
                                                     type: "array"
                                                   type: "object"
+                                                description:
+                                                  type: "string"
                                                 id:
                                                   type: "string"
                                                 name:
@@ -5886,6 +6022,8 @@ spec:
                                                             type: "string"
                                                           type: "array"
                                                         type: "object"
+                                                      description:
+                                                        type: "string"
                                                       id:
                                                         type: "string"
                                                       name:
@@ -5919,6 +6057,8 @@ spec:
                                                                   type: "string"
                                                                 type: "array"
                                                               type: "object"
+                                                            description:
+                                                              type: "string"
                                                             id:
                                                               type: "string"
                                                             name:
@@ -5952,6 +6092,8 @@ spec:
                                                                         type: "string"
                                                                       type: "array"
                                                                     type: "object"
+                                                                  description:
+                                                                    type: "string"
                                                                   id:
                                                                     type: "string"
                                                                   name:
@@ -5985,6 +6127,8 @@ spec:
                                                                               type: "string"
                                                                             type: "array"
                                                                           type: "object"
+                                                                        description:
+                                                                          type: "string"
                                                                         id:
                                                                           type: "string"
                                                                         name:
@@ -6018,6 +6162,8 @@ spec:
                                                                                     type: "string"
                                                                                   type: "array"
                                                                                 type: "object"
+                                                                              description:
+                                                                                type: "string"
                                                                               id:
                                                                                 type: "string"
                                                                               name:
@@ -6051,6 +6197,8 @@ spec:
                                                                                           type: "string"
                                                                                         type: "array"
                                                                                       type: "object"
+                                                                                    description:
+                                                                                      type: "string"
                                                                                     id:
                                                                                       type: "string"
                                                                                     name:
@@ -6203,6 +6351,14 @@ spec:
                                 resourceTypes:
                                   additionalProperties:
                                     properties:
+                                      groupType:
+                                        type: "string"
+                                      scopeAliases:
+                                        additionalProperties:
+                                          items:
+                                            type: "string"
+                                          type: "array"
+                                        type: "object"
                                       scopes:
                                         items:
                                           type: "string"
@@ -6663,6 +6819,8 @@ spec:
                                       type: "string"
                                     digits:
                                       type: "integer"
+                                    federationLink:
+                                      type: "string"
                                     hashIterations:
                                       type: "integer"
                                     hashedSaltedValue:
@@ -7196,6 +7354,8 @@ spec:
                                 type: "string"
                               digits:
                                 type: "integer"
+                              federationLink:
+                                type: "string"
                               hashIterations:
                                 type: "integer"
                               hashedSaltedValue:
@@ -7369,6 +7529,8 @@ spec:
                     items:
                       type: "string"
                     type: "array"
+                  webAuthnPolicyPasswordlessPasskeysEnabled:
+                    type: "boolean"
                   webAuthnPolicyPasswordlessRequireResidentKey:
                     type: "string"
                   webAuthnPolicyPasswordlessRpEntityName:
@@ -7402,6 +7564,8 @@ spec:
                     items:
                       properties:
                         name:
+                          type: "string"
+                        request:
                           type: "string"
                       type: "object"
                     type: "array"
