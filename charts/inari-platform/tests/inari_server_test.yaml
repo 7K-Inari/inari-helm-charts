@@ -33,7 +33,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].env[0].name
-          value: INARI_DATABASE_URI
+          value: INARI_DATABASE_URL
       - equal:
           path: spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef.name
           value: inari-db
