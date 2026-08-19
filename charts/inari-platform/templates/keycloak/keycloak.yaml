@@ -7,6 +7,12 @@ metadata:
     {{- include "inari-platform.componentLabels" (dict "root" . "component" "keycloak") | nindent 4 }}
 spec:
   instances: {{ .Values.keycloak.instances }}
+  {{- if .Values.keycloak.image }}
+  image: {{ .Values.keycloak.image }}
+  # the operator assumes custom images are already augmented (--optimized);
+  # the pinned stock image is not, so keep the normal build path
+  startOptimized: false
+  {{- end }}
   bootstrapAdmin:
     user:
       # secret with literal 'username'/'password' keys (operator contract)
@@ -25,7 +31,10 @@ spec:
   http:
     httpEnabled: true
   hostname:
-    strict: false
+    {{- with .Values.keycloak.hostname.hostname }}
+    hostname: {{ . | quote }}
+    {{- end }}
+    strict: {{ .Values.keycloak.hostname.strict }}
   {{- with .Values.keycloak.resources }}
   resources:
     {{- toYaml . | nindent 4 }}

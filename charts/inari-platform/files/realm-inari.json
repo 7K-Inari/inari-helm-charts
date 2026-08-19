@@ -13,6 +13,7 @@
     "org.inari/managed-by": "inari-helm-charts"
   },
   "defaultDefaultClientScopes": [
+    "basic",
     "web-origins",
     "acr",
     "profile",
@@ -50,12 +51,27 @@
         "http://keycloak.local:8080"
       ],
       "defaultClientScopes": [
+        "basic",
         "openid",
         "profile",
         "email",
         "organization"
       ],
-      "optionalClientScopes": []
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "audience-inari-server",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "inari-server",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
     },
     {
       "clientId": "inari-ui",
@@ -70,12 +86,27 @@
         "http://localhost:5173"
       ],
       "defaultClientScopes": [
+        "basic",
         "openid",
         "profile",
         "email",
         "organization"
       ],
-      "optionalClientScopes": []
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "audience-inari-server",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "inari-server",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
     }
   ]
 }

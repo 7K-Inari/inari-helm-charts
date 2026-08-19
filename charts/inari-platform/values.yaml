@@ -54,6 +54,20 @@ externalPostgres:
 keycloak:
   enabled: true
   instances: 1
+  # Pin Keycloak + operator to a matched version. The operator's default
+  # image (26.1.0) breaks --optimized with newer server images; setting
+  # keycloak.image also renders startOptimized: false on the Keycloak CR
+  # (the operator assumes custom images are already augmented).
+  image: quay.io/keycloak/keycloak:26.3.2
+  operatorImage: quay.io/keycloak/keycloak-operator:26.3.2
+  # Issuer hostname. Set hostname to a stable FQDN so tokens are issued with
+  # a fixed iss claim without patching the Keycloak CR by hand. Must be a
+  # plain hostname (keycloak.local) or a full URL (http://keycloak.local:8080)
+  # — Keycloak hostname v2 rejects bare host:port. Empty = Keycloak derives
+  # it per request.
+  hostname:
+    hostname: ""
+    strict: false
   # admin credentials for the "admin" user (dev default; override in real installs)
   adminUser: admin
   adminPassword: admin-dev
