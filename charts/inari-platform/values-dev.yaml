@@ -6,6 +6,10 @@ postgresql:
   storageSize: 1Gi
 
 keycloak:
+  # pin the issuer to the stable dev FQDN used by the realm redirectUris
+  # (requires a keycloak.local -> 127.0.0.1 hosts entry / port-forward)
+  hostname:
+    hostname: keycloak.local:8080
   resources:
     requests:
       cpu: 100m
