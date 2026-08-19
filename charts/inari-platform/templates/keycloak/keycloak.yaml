@@ -32,7 +32,7 @@ spec:
     httpEnabled: true
   hostname:
     {{- with .Values.keycloak.hostname.hostname }}
-    hostname: {{ . }}
+    hostname: {{ . | quote }}
     {{- end }}
     strict: {{ .Values.keycloak.hostname.strict }}
   {{- with .Values.keycloak.resources }}

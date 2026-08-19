@@ -60,9 +60,11 @@ keycloak:
   # (the operator assumes custom images are already augmented).
   image: quay.io/keycloak/keycloak:26.3.2
   operatorImage: quay.io/keycloak/keycloak-operator:26.3.2
-  # Issuer hostname. Set hostname to a stable FQDN (e.g. keycloak.local:8080
-  # in dev/e2e) so tokens are issued with a fixed iss claim without patching
-  # the Keycloak CR by hand. Empty hostname = Keycloak derives it per request.
+  # Issuer hostname. Set hostname to a stable FQDN so tokens are issued with
+  # a fixed iss claim without patching the Keycloak CR by hand. Must be a
+  # plain hostname (keycloak.local) or a full URL (http://keycloak.local:8080)
+  # — Keycloak hostname v2 rejects bare host:port. Empty = Keycloak derives
+  # it per request.
   hostname:
     hostname: ""
     strict: false

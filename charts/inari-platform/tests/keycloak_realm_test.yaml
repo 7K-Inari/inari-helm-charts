@@ -56,15 +56,24 @@ tests:
   - it: pins the issuer hostname when keycloak.hostname.hostname is set
     template: keycloak/keycloak.yaml
     set:
-      keycloak.hostname.hostname: keycloak.local:8080
+      keycloak.hostname.hostname: keycloak.local
       keycloak.hostname.strict: true
     asserts:
       - equal:
           path: spec.hostname.hostname
-          value: keycloak.local:8080
+          value: keycloak.local
       - equal:
           path: spec.hostname.strict
           value: true
+  - it: quotes hostname values containing a port or scheme
+    # Keycloak hostname v2 requires full URL form when a port is present
+    template: keycloak/keycloak.yaml
+    set:
+      keycloak.hostname.hostname: http://keycloak.local:8080
+    asserts:
+      - equal:
+          path: spec.hostname.hostname
+          value: http://keycloak.local:8080
   - it: pins the operator deployment and related keycloak image
     template: keycloak/operator.yaml
     documentSelector:

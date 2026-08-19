@@ -7,9 +7,10 @@ postgresql:
 
 keycloak:
   # pin the issuer to the stable dev FQDN used by the realm redirectUris
-  # (requires a keycloak.local -> 127.0.0.1 hosts entry / port-forward)
+  # (requires a keycloak.local -> 127.0.0.1 hosts entry / port-forward).
+  # Keycloak hostname v2 rejects bare host:port — a port requires full URL form.
   hostname:
-    hostname: keycloak.local:8080
+    hostname: http://keycloak.local:8080
   resources:
     requests:
       cpu: 100m
