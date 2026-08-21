@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.3.1...inari-platform-v0.4.0) (2026-08-19)
+
+
+### Features
+
+* **inari-platform:** pin dev issuer hostname to keycloak.local:8080 ([881614d](https://github.com/7K-Inari/inari-helm-charts/commit/881614d37b274c4d0b29b216181bc803015dbb4e))
+* **inari-platform:** pin keycloak/operator images to 26.3.2 with startOptimized=false ([b8cd6e4](https://github.com/7K-Inari/inari-helm-charts/commit/b8cd6e4d4b633562f5a1043221fb687403aadf90))
+* **inari-platform:** provision Keycloak realm scopes, audience mapper, and 26.3.2 image pins ([4e660ad](https://github.com/7K-Inari/inari-helm-charts/commit/4e660ad4dbbdff300d6801a474e4b89c4d931862))
+
+
+### Bug Fixes
+
+* **chart:** align inari-server env with server config; enrich dev realm ([ba4cbc3](https://github.com/7K-Inari/inari-helm-charts/commit/ba4cbc32ed81f28d22e10994c7779e46c11a93ca))
+* **chart:** align inari-server env with server config; enrich dev realm ([c7e85d0](https://github.com/7K-Inari/inari-helm-charts/commit/c7e85d045c4a14e7d2230476484b625bece9d76e))
+* **inari-platform:** add basic scope and audience mapper to inari realm ([53dc4bf](https://github.com/7K-Inari/inari-helm-charts/commit/53dc4bff1b33f823ab6c578b4c8c9267cf7dff68))
+* **inari-platform:** align inari-server db env test with INARI_DATABASE_URL ([965916a](https://github.com/7K-Inari/inari-helm-charts/commit/965916a856694798dbd04693800ef0bb5dfc631b))
+* **inari-platform:** use URL-form dev hostname and quote hostname value ([d4ff1f8](https://github.com/7K-Inari/inari-helm-charts/commit/d4ff1f86c9974c2ecb8496477cf6946ec1e5b827))
+
 ## [0.3.1](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.3.0...inari-platform-v0.3.1) (2026-08-15)
 
 
