@@ -22,8 +22,10 @@ spec:
       secret:
         name: inari-db
       postInitApplicationSQL:
+        {{- if .Values.keycloak.enabled }}
         - "CREATE ROLE keycloak LOGIN PASSWORD '$(keycloak-password)'"
         - CREATE DATABASE keycloak OWNER keycloak
+        {{- end }}
         - "CREATE ROLE openfga LOGIN PASSWORD '$(openfga-password)'"
         - CREATE DATABASE openfga OWNER openfga
 {{- end }}
