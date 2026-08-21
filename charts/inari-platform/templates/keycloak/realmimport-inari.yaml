@@ -8,5 +8,5 @@ metadata:
 spec:
   keycloakCRName: keycloak
   realm:
-    {{- .Files.Get "files/realm-inari.json" | fromJson | toYaml | nindent 4 }}
+    {{- tpl (.Files.Get "files/realm-inari.json") . | fromJson | toYaml | nindent 4 }}
 {{- end }}

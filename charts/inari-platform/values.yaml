@@ -68,6 +68,14 @@ keycloak:
   hostname:
     hostname: ""
     strict: false
+  # Console (inari-ui client) OIDC redirect URIs / web origins. The realm
+  # import file is rendered through tpl, so these inject into the imported
+  # realm. Defaults keep local dev working; set the public console URL in
+  # real deployments.
+  consoleRedirectUris:
+    - "http://localhost:5173/*"
+  consoleWebOrigins:
+    - "http://localhost:5173"
   # admin credentials for the "admin" user (dev default; override in real installs)
   adminUser: admin
   adminPassword: admin-dev
