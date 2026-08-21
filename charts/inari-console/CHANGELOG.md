@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/7K-Inari/inari-helm-charts/compare/inari-console-v0.2.0...inari-console-v0.2.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* set cors for auth.7kgroup.org ([ab88e7d](https://github.com/7K-Inari/inari-helm-charts/commit/ab88e7db72a870825b2d8c8e5743e37b719ed3d6))
+
 ## [0.2.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-console-v0.1.0...inari-console-v0.2.0) (2026-08-21)
 
 

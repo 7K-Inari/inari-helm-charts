@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.6.0...inari-platform-v0.7.0) (2026-08-21)
+
+
+### Features
+
+* **chart:** skip keycloak role/db creation when using external Keycloak ([26b5db2](https://github.com/7K-Inari/inari-helm-charts/commit/26b5db240d6ea278356ccedcb013286275c9d818))
+
+
+### Bug Fixes
+
+* **chart:** reference bootstrap secret keys in postInit role creation ([706d136](https://github.com/7K-Inari/inari-helm-charts/commit/706d136218a50db67bc965b2cb2b61caab9c4151))
+* **chart:** reference bootstrap secret keys in postInit role creation ([f269217](https://github.com/7K-Inari/inari-helm-charts/commit/f269217b31d3af1ce47ca529d960fbe1bb4ccf49))
+
 ## [0.6.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.5.0...inari-platform-v0.6.0) (2026-08-21)
 
 
