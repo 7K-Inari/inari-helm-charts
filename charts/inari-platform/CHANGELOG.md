@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.4.0...inari-platform-v0.5.0) (2026-08-21)
+
+
+### Features
+
+* **chart:** make console OIDC redirect URIs configurable ([03ede7b](https://github.com/7K-Inari/inari-helm-charts/commit/03ede7b510069877a44d89459513416628d8b310))
+* **chart:** make console OIDC redirect URIs configurable ([44a0960](https://github.com/7K-Inari/inari-helm-charts/commit/44a096052a913640ed76917f0ccf73bc8f255458))
+
 ## [0.4.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.3.1...inari-platform-v0.4.0) (2026-08-21)
 
 
