@@ -1,6 +1,8 @@
 apiVersion: v2
 name: inari-console
-description: Inari web console (inari-ui) — static bundle pulled from the OCI artifact, served by nginx with runtime config.js
+description: >-
+  Inari web console (inari-ui) — static bundle pulled from the OCI artifact,
+  served by nginx with runtime config.js
 type: application
-version: 0.1.0
-appVersion: "1.2.0"
+version: 0.2.0
+appVersion: 1.2.0
