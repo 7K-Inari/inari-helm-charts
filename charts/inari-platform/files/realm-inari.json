@@ -79,12 +79,8 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
-      "redirectUris": [
-        "http://localhost:5173/*"
-      ],
-      "webOrigins": [
-        "http://localhost:5173"
-      ],
+      "redirectUris": {{ .Values.keycloak.consoleRedirectUris | toJson }},
+      "webOrigins": {{ .Values.keycloak.consoleWebOrigins | toJson }},
       "defaultClientScopes": [
         "basic",
         "openid",
