@@ -23,10 +23,10 @@ spec:
     port: {{ include "inari-platform.postgresPort" . }}
     database: keycloak
     usernameSecret:
-      name: inari-db
+      name: {{ include "inari-platform.dbSecretName" . }}
       key: keycloak-username
     passwordSecret:
-      name: inari-db
+      name: {{ include "inari-platform.dbSecretName" . }}
       key: keycloak-password
   http:
     httpEnabled: true

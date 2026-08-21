@@ -20,6 +20,11 @@ postgresql:
   storageClass: ""
   # superuser bootstrap secret created by templates/postgres/secrets.yaml
   auth:
+    # When set, the chart does not create the inari-db secret; the named
+    # secret must exist (e.g. synced from Vault via ESO) and carry keys:
+    # inari-uri, openfga-uri, keycloak-username, keycloak-password,
+    # keycloak-admin-password (bundled Keycloak admin pass).
+    existingSecret: ""
     superuserPassword: inari-dev-superuser
     passwords:
       inari: inari-dev
@@ -76,6 +81,21 @@ keycloak:
     - "http://localhost:5173/*"
   consoleWebOrigins:
     - "http://localhost:5173"
+  # Reuse an existing Keycloak instance instead of deploying one
+  # (keycloak.enabled=false). importInto optionally renders the
+  # KeycloakRealmImport CR against an operator-managed instance.
+  external:
+    # in-cluster base URL for admin/backchannel calls
+    baseUrl: ""
+    # public issuer base (no /realms suffix), e.g. https://auth.7kgroup.org
+    issuerUrl: ""
+    adminSecret:
+      name: ""
+      userKey: username
+      passKey: password
+    importInto:
+      name: ""
+      namespace: ""
   # admin credentials for the "admin" user (dev default; override in real installs)
   adminUser: admin
   adminPassword: admin-dev

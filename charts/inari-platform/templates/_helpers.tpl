@@ -52,3 +52,59 @@ PostgreSQL host used by sibling components: CNPG rw service or external.
 {{- define "inari-platform.postgresPort" -}}
 {{- if .Values.postgresql.enabled -}}5432{{- else -}}{{ .Values.externalPostgres.port }}{{- end -}}
 {{- end -}}
+
+{{/*
+Credential secret name: created by the chart from values, or an existing
+secret (e.g. synced from Vault via ESO). Contract keys: inari-uri,
+openfga-uri, keycloak-username, keycloak-password, keycloak-admin-password.
+*/}}
+{{- define "inari-platform.dbSecretName" -}}
+{{- .Values.postgresql.auth.existingSecret | default "inari-db" -}}
+{{- end -}}
+
+{{/*
+Keycloak base URL resolution: bundled in-cluster service when
+keycloak.enabled, otherwise the external instance's (admin/backchannel) URL.
+Explicit inariServer.keycloakBaseUrl always wins.
+*/}}
+{{- define "inari-platform.keycloakBaseUrl" -}}
+{{- if .Values.inariServer.keycloakBaseUrl -}}
+{{- .Values.inariServer.keycloakBaseUrl -}}
+{{- else if .Values.keycloak.enabled -}}
+{{- "http://keycloak-service:8080" -}}
+{{- else -}}
+{{- required "keycloak.external.baseUrl is required when keycloak.enabled=false" .Values.keycloak.external.baseUrl -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+OIDC issuer URL resolution: explicit inariServer.oidcIssuerUrl wins, then
+external.issuerUrl + /realms/<realm>, then the bundled default.
+*/}}
+{{- define "inari-platform.oidcIssuerUrl" -}}
+{{- if .Values.inariServer.oidcIssuerUrl -}}
+{{- .Values.inariServer.oidcIssuerUrl -}}
+{{- else if .Values.keycloak.enabled -}}
+{{- "http://keycloak-service:8080/realms/inari" -}}
+{{- else -}}
+{{- printf "%s/realms/inari" (required "keycloak.external.issuerUrl is required when keycloak.enabled=false" .Values.keycloak.external.issuerUrl) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Keycloak admin credentials secret + keys: bundled chart-created secret or an
+external one synced from Vault.
+*/}}
+{{- define "inari-platform.keycloakAdminSecretName" -}}
+{{- if .Values.keycloak.enabled -}}
+{{- "inari-db" -}}
+{{- else -}}
+{{- required "keycloak.external.adminSecret.name is required when keycloak.enabled=false" .Values.keycloak.external.adminSecret.name -}}
+{{- end -}}
+{{- end -}}
+{{- define "inari-platform.keycloakAdminUserKey" -}}
+{{- if .Values.keycloak.enabled -}}keycloak-admin-user{{- else -}}{{ .Values.keycloak.external.adminSecret.userKey | default "username" }}{{- end -}}
+{{- end -}}
+{{- define "inari-platform.keycloakAdminPassKey" -}}
+{{- if .Values.keycloak.enabled -}}keycloak-admin-password{{- else -}}{{ .Values.keycloak.external.adminSecret.passKey | default "password" }}{{- end -}}
+{{- end -}}
