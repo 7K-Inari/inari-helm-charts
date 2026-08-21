@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.4.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.3.1...inari-platform-v0.4.0) (2026-08-19)
+## [0.4.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.3.1...inari-platform-v0.4.0) (2026-08-21)
 
 
 ### Features
