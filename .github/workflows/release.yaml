@@ -6,6 +6,14 @@ name: release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    # Repair path (still workflow-driven): force-publish a chart whose
+    # publish job previously failed after the release was already tagged.
+    inputs:
+      chart-path:
+        description: 'Chart path to (re)publish, e.g. charts/inari-platform'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -23,12 +31,20 @@ jobs:
   detect:
     runs-on: ubuntu-latest
     outputs:
-      paths_released: ${{ steps.rp.outputs.paths_released || '[]' }}
+      paths_released: ${{ steps.rp.outputs.paths_released || steps.disp.outputs.paths || '[]' }}
     steps:
-      # On a release-merge push this creates the per-chart tags
-      # (e.g. inari-platform-v0.2.0) and GitHub Releases; on ordinary
-      # commits it is a no-op (release-please.yml maintains the PR).
-      - uses: googleapis/release-please-action@v4
+      - if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+      - name: Dispatch override
+        id: disp
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          path="${{ inputs.chart-path }}"
+          test -f "$path/Chart.yaml" || { echo "no Chart.yaml at $path"; exit 1; }
+          jq -n --arg p "$path" '[$p]' > /dev/null  # validate
+          echo "paths=$(jq -cn --arg p "$path" '[$p]')" >> "$GITHUB_OUTPUT"
+      - if: github.event_name != 'workflow_dispatch'
+        uses: googleapis/release-please-action@v4
         id: rp
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
