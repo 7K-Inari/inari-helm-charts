@@ -1,0 +1,31 @@
+replicaCount: 1
+
+bundle:
+  # OCI artifact carrying the built console (oras layout).
+  repository: ghcr.io/7k-inari/inari-ui-bundle
+  tag: "1.2.0"
+
+# Runtime config rendered into config.js (window.__INARI_CONFIG__).
+keycloakUrl: "http://localhost:8080"
+keycloakRealm: "inari"
+keycloakClientId: "inari-ui"
+apiBaseUrl: "/api/v1"
+
+image:
+  # oras CLI used by the init container to pull the bundle
+  orasRepository: ghcr.io/oras-project/oras
+  orasTag: v1.3.0
+  nginxRepository: nginx
+  nginxTag: 1.27-alpine
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+service:
+  type: ClusterIP
+  port: 80

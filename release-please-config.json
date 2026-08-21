@@ -12,6 +12,14 @@
       "extra-files": [
         "Chart.yaml"
       ]
+    },
+    "charts/inari-console": {
+      "release-type": "simple",
+      "component": "inari-console",
+      "changelog-path": "CHANGELOG.md",
+      "extra-files": [
+        "Chart.yaml"
+      ]
     }
   }
 }

@@ -28,16 +28,17 @@ spec:
             - name: INARI_DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: inari-db
+                  name: {{ include "inari-platform.dbSecretName" . }}
                   key: inari-uri
             - name: INARI_OPENFGA_API_URL
               value: http://openfga:8080
             - name: INARI_OIDC_ISSUER_URL
-              value: {{ .Values.inariServer.oidcIssuerUrl | default "http://keycloak-service:8080/realms/inari" | quote }}
+              value: {{ include "inari-platform.oidcIssuerUrl" . | quote }}
             - name: INARI_KEYCLOAK_BASE_URL
-              value: {{ .Values.inariServer.keycloakBaseUrl | default "http://keycloak-service:8080" | quote }}
+              value: {{ include "inari-platform.keycloakBaseUrl" . | quote }}
             - name: INARI_KEYCLOAK_REALM
               value: "inari"
+            {{- if .Values.keycloak.enabled }}
             - name: INARI_KEYCLOAK_ADMIN_USER
               value: {{ .Values.keycloak.adminUser | quote }}
             - name: INARI_KEYCLOAK_ADMIN_PASS
@@ -45,6 +46,18 @@ spec:
                 secretKeyRef:
                   name: inari-db
                   key: keycloak-admin-password
+            {{- else }}
+            - name: INARI_KEYCLOAK_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.keycloak.external.adminSecret.name }}
+                  key: {{ .Values.keycloak.external.adminSecret.userKey | default "username" }}
+            - name: INARI_KEYCLOAK_ADMIN_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.keycloak.external.adminSecret.name }}
+                  key: {{ .Values.keycloak.external.adminSecret.passKey | default "password" }}
+            {{- end }}
             {{- with .Values.inariServer.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

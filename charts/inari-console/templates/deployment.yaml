@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "inari-console.fullname" . }}
+  labels:
+    {{- include "inari-console.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "inari-console.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "inari-console.selectorLabels" . | nindent 8 }}
+    spec:
+      initContainers:
+        - name: bundle
+          image: "{{ .Values.image.orasRepository }}:{{ .Values.image.orasTag }}"
+          env:
+            - name: BUNDLE
+              value: "{{ .Values.bundle.repository }}:{{ .Values.bundle.tag }}"
+            - name: KEYCLOAK_URL
+              value: {{ .Values.keycloakUrl | quote }}
+            - name: KEYCLOAK_REALM
+              value: {{ .Values.keycloakRealm | quote }}
+            - name: KEYCLOAK_CLIENT_ID
+              value: {{ .Values.keycloakClientId | quote }}
+            - name: API_BASE_URL
+              value: {{ .Values.apiBaseUrl | quote }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              mkdir -p /work /html
+              oras pull "$BUNDLE" -o /work
+              tar -xzf /work/inari-ui-bundle.tar.gz -C /html
+              printf 'window.__INARI_CONFIG__ = { keycloakUrl: "%s", keycloakRealm: "%s", keycloakClientId: "%s", apiBaseUrl: "%s" };\n' \
+                "$KEYCLOAK_URL" "$KEYCLOAK_REALM" "$KEYCLOAK_CLIENT_ID" "$API_BASE_URL" > /html/config.js
+          volumeMounts:
+            - name: html
+              mountPath: /html
+            - name: work
+              mountPath: /work
+      containers:
+        - name: nginx
+          image: "{{ .Values.image.nginxRepository }}:{{ .Values.image.nginxTag }}"
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+      volumes:
+        - name: html
+          emptyDir: {}
+        - name: work
+          emptyDir: {}
+        - name: nginx-conf
+          configMap:
+            name: {{ include "inari-console.fullname" . }}-nginx
