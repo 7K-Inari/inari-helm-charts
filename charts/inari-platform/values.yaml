@@ -14,6 +14,10 @@ global:
 # ---------------------------------------------------------------------------
 postgresql:
   enabled: true
+  operator:
+    # Install the CNPG operator (subchart) + CRDs. Disable when the cluster
+    # already runs a shared CNPG operator (e.g. cnpg-system).
+    enabled: true
   clusterName: postgresql
   instances: 1
   storageSize: 10Gi
@@ -58,6 +62,9 @@ externalPostgres:
 # ---------------------------------------------------------------------------
 keycloak:
   enabled: true
+  # Install the Keycloak operator CRDs. Disable when reusing an existing
+  # operator-managed instance (keycloak.enabled=false + external.importInto).
+  crdsInstall: true
   instances: 1
   # Pin Keycloak + operator to a matched version. The operator's default
   # image (26.1.0) breaks --optimized with newer server images; setting
