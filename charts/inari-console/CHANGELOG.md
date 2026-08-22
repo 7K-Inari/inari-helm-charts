@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/7K-Inari/inari-helm-charts/compare/inari-console-v0.2.2...inari-console-v0.2.3) (2026-08-22)
+
+
+### Bug Fixes
+
+* templatize nginx configmap ([1db2db2](https://github.com/7K-Inari/inari-helm-charts/commit/1db2db26f72a40e3249b2af44124f57e49052c86))
+
 ## [0.2.2](https://github.com/7K-Inari/inari-helm-charts/compare/inari-console-v0.2.1...inari-console-v0.2.2) (2026-08-21)
 
 
