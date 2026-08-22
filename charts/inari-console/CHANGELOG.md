@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/7K-Inari/inari-helm-charts/compare/inari-console-v0.2.3...inari-console-v0.2.4) (2026-08-22)
+
+
+### Bug Fixes
+
+* fix listen port for nginx configuration ([53df0dd](https://github.com/7K-Inari/inari-helm-charts/commit/53df0ddd72892c63a48d2297c48de1669825a88e))
+
 ## [0.2.3](https://github.com/7K-Inari/inari-helm-charts/compare/inari-console-v0.2.2...inari-console-v0.2.3) (2026-08-22)
 
 
