@@ -15,7 +15,7 @@ data:
     }
 
     server {
-      listen {{ .Values.service.port | default 8080 }};
+      listen 8080;
       root /usr/share/nginx/html;
       index index.html;
 
