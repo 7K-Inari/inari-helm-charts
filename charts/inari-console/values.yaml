@@ -11,6 +11,11 @@ keycloakRealm: "inari"
 keycloakClientId: "inari-ui"
 apiBaseUrl: "/api/v1"
 
+nginx:
+  corsOrigins:
+    - "https://example.org"
+    - "https://auth.example.org"
+
 image:
   # oras CLI used by the init container to pull the bundle
   orasRepository: ghcr.io/oras-project/oras

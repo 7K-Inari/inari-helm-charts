@@ -9,12 +9,13 @@ data:
     map $http_origin $cors_origin {
       default "";
       "~^https?://localhost(:[0-9]+)?$" $http_origin;
-      "https://7kgroup.org" $http_origin;
-      "https://auth.7kgroup.org" $http_origin;
+      {{- range .Values.nginx.corsOrigins }}
+      "{{ . }}" $http_origin;
+      {{- end }}
     }
 
     server {
-      listen 8080;
+      listen {{ .Values.service.port | default 8080 }};
       root /usr/share/nginx/html;
       index index.html;
 
