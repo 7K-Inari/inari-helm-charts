@@ -40,6 +40,27 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef.key
           value: inari-uri
+  - it: passes the default platform admin role to the server
+    template: inari-server/deployment.yaml
+    set:
+      inariServer.enabled: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: INARI_PLATFORM_ADMIN_ROLE
+            value: inari-platform-admin
+  - it: passes an overridden platform admin role to the server
+    template: inari-server/deployment.yaml
+    set:
+      inariServer.enabled: true
+      keycloak.adminRole: custom-admin
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: INARI_PLATFORM_ADMIN_ROLE
+            value: custom-admin
   - it: renders a Service when enabled
     template: inari-server/service.yaml
     set:

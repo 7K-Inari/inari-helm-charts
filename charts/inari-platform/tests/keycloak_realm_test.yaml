@@ -128,6 +128,33 @@ tests:
               access.token.claim: "true"
               id.token.claim: "false"
               userinfo.token.claim: "false"
+  - it: creates the platform admin client role on the inari-server client
+    template: keycloak/realmimport-inari.yaml
+    asserts:
+      - contains:
+          path: spec.realm.clients[?(@.clientId == "inari-server")].roles
+          content:
+            name: inari-platform-admin
+            description: Inari platform administrator
+  - it: renders an overridden platform admin role name
+    template: keycloak/realmimport-inari.yaml
+    set:
+      keycloak.adminRole: custom-admin
+    asserts:
+      - contains:
+          path: spec.realm.clients[?(@.clientId == "inari-server")].roles
+          content:
+            name: custom-admin
+            description: Inari platform administrator
+      - contains:
+          path: spec.realm.users[?(@.username == "dev-admin")].clientRoles.inari-server
+          content: custom-admin
+  - it: assigns the platform admin role to the dev-admin user
+    template: keycloak/realmimport-inari.yaml
+    asserts:
+      - contains:
+          path: spec.realm.users[?(@.username == "dev-admin")].clientRoles.inari-server
+          content: inari-platform-admin
   - it: renders the console redirect URIs from values (tpl-rendered realm)
     template: keycloak/realmimport-inari.yaml
     set:
