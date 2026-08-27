@@ -51,10 +51,14 @@ jobs:
             # install the previous released version from GHCR
             # Operators + CRDs are pre-installed by install-operators.sh.
             # --skip-crds covers crds/-dir releases; the --set flags cover
-            # releases whose CRDs were template-gated (default true).
+            # releases whose CRDs/operator were template-gated or unconditional
+            # (0.7.0 renders the keycloak operator + ClusterRole whenever
+            # keycloak.enabled=true, with no separate gate — disable keycloak
+            # entirely for the previous release; the upgrade to the PR chart
+            # re-enables it).
             helm upgrade --install "$name-prev" "oci://ghcr.io/7k-inari/charts/$name" \
               --version "$prev" --namespace "$name-test" --create-namespace --wait --timeout 5m --skip-crds \
-              --set postgresql.operator.enabled=false --set keycloak.crdsInstall=false || \
+              --set postgresql.operator.enabled=false --set keycloak.crdsInstall=false --set keycloak.enabled=false || \
               echo "::warning::previous release $prev not installable (first release?) — installing PR chart directly"
             # upgrade to the PR chart
             helm dependency build "$chart"
