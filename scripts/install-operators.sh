@@ -5,7 +5,8 @@
 # prerequisite step for clusters that don't have them yet. Idempotent.
 set -euo pipefail
 
-CNPG_VERSION="${CNPG_VERSION:-0.22.1}"
+# The chart requires CNPG >= 1.25 (declarative managed roles + Database CRs).
+CNPG_VERSION="${CNPG_VERSION:-0.29.0}"
 KC_VERSION="${KC_VERSION:-26.3.2}"
 
 log() { printf '\033[1;34m[operators]\033[0m %s\n' "$*"; }
