@@ -67,7 +67,7 @@ jobs:
             # values schema then rejects the empty keycloak.external).
             helm dependency build "$chart"
             helm upgrade --install "$name-prev" "$chart" \
-              --namespace "$name-test" --wait --timeout 15m --skip-crds \
+              --namespace "$name-test" --create-namespace --wait --timeout 15m --skip-crds \
               --reset-values
             helm history "$name-prev" --namespace "$name-test"
           done
