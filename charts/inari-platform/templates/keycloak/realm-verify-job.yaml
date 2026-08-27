@@ -53,7 +53,9 @@ spec:
 
               TOKEN=$(curl -sS --max-time 15 -X POST "$KC_BASE/realms/inari/protocol/openid-connect/token" \
                 -H 'Content-Type: application/x-www-form-urlencoded' \
-                -d "grant_type=client_credentials&client_id=$KC_CLIENT_ID&client_secret=$KC_CLIENT_SECRET" \
+                --data-urlencode "grant_type=client_credentials" \
+                --data-urlencode "client_id=$KC_CLIENT_ID" \
+                --data-urlencode "client_secret=$KC_CLIENT_SECRET" \
                 | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
               [ -n "$TOKEN" ] || { echo "could not obtain admin token via client_credentials" >&2; exit 1; }
 
