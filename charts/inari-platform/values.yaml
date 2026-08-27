@@ -96,6 +96,14 @@ keycloak:
   realmSync:
     enabled: false
     image: adorsys/keycloak-config-cli:6.5.1-26
+  # Confidential OIDC client credentials consumed by inari-operator. The named
+  # secret must already exist (e.g. synced from Vault via ESO) and carry the
+  # client secret under clientSecretKey. helm template fails when
+  # inariOperator.enabled=true and name is empty — without it the operator
+  # exits with "missing keycloak client secret".
+  operatorAdminSecret:
+    name: ""
+    clientSecretKey: client-secret
   # admin credentials for the "admin" user (dev default; override in real installs)
   adminUser: admin
   adminPassword: admin-dev
@@ -165,6 +173,8 @@ inariOperator:
     tag: "0.0.0"
     pullPolicy: IfNotPresent
   replicaCount: 1
+  # Keycloak confidential client (realm "inari") the operator authenticates as.
+  keycloakClientId: inari-operator
   resources: {}
 
 # ---------------------------------------------------------------------------
