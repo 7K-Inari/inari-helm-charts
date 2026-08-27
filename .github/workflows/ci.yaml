@@ -58,6 +58,10 @@ jobs:
       - name: Create kind cluster
         uses: helm/kind-action@v1.12.0
 
+      # The chart assumes cluster-provided operators; install them first.
+      - name: Install prerequisite operators
+        run: ./scripts/install-operators.sh
+
       - name: Install chart and wait for readiness
         run: |
           helm dependency build charts/inari-platform

@@ -30,6 +30,10 @@ if ! $SKIP_KIND; then
   kubectl config use-context "kind-${KIND_CLUSTER_NAME}" >/dev/null
 fi
 
+# The chart never installs operators (plan: cluster-provided); install the
+# CNPG + Keycloak operators if missing before installing the platform.
+"$SCRIPT_DIR/install-operators.sh"
+
 log "building chart dependencies"
 # update (not build): works with the unmanaged repositories in Chart.yaml and
 # stays idempotent across re-runs (a stale Chart.lock makes build require

@@ -30,6 +30,10 @@ jobs:
           cluster_name: chart-upgrade
           wait: 60s
 
+      # The chart assumes cluster-provided operators; install them first.
+      - name: Install prerequisite operators
+        run: ./scripts/install-operators.sh
+
       - name: Install previous release, upgrade to PR chart
         run: |
           set -euo pipefail
