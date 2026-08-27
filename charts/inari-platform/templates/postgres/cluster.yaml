@@ -26,11 +26,49 @@ spec:
       owner: inari
       secret:
         name: {{ include "inari-platform.dbSecretName" . }}
-      postInitApplicationSQL:
-        {{- if .Values.keycloak.enabled }}
-        - "CREATE ROLE keycloak LOGIN PASSWORD '$(keycloak-password)'"
-        - CREATE DATABASE keycloak OWNER keycloak
-        {{- end }}
-        - "CREATE ROLE openfga LOGIN PASSWORD '$(openfga-password)'"
-        - CREATE DATABASE openfga OWNER openfga
+  # Declarative role management: passwords live in the db secret and stay in
+  # sync on rotation/upgrade (no one-shot postInit drift). Database objects
+  # are separate Database CRs below.
+  managed:
+    roles:
+      {{- if .Values.keycloak.enabled }}
+      - name: keycloak
+        ensure: present
+        login: true
+        passwordSecret:
+          name: {{ include "inari-platform.dbSecretName" . }}
+          key: keycloak-password
+      {{- end }}
+      - name: openfga
+        ensure: present
+        login: true
+        passwordSecret:
+          name: {{ include "inari-platform.dbSecretName" . }}
+          key: openfga-password
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: {{ .Values.postgresql.clusterName }}-openfga
+  labels:
+    {{- include "inari-platform.componentLabels" (dict "root" . "component" "postgresql") | nindent 4 }}
+spec:
+  cluster:
+    name: {{ .Values.postgresql.clusterName }}
+  name: openfga
+  owner: openfga
+---
+{{- if .Values.keycloak.enabled }}
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: {{ .Values.postgresql.clusterName }}-keycloak
+  labels:
+    {{- include "inari-platform.componentLabels" (dict "root" . "component" "postgresql") | nindent 4 }}
+spec:
+  cluster:
+    name: {{ .Values.postgresql.clusterName }}
+  name: keycloak
+  owner: keycloak
+{{- end }}
 {{- end }}
