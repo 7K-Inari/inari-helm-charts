@@ -166,7 +166,7 @@ tests:
           value: inari-platform-admin
       - exists:
           path: stringData.client-secret
-  - it: renders the verify job as a post-install/post-upgrade hook targeting the keycloak service
+  - it: renders the verify job as a post-install/post-upgrade hook running after client-setup
     template: keycloak/realm-verify-job.yaml
     asserts:
       - isKind:
@@ -174,9 +174,65 @@ tests:
       - equal:
           path: metadata.annotations["helm.sh/hook"]
           value: post-install,post-upgrade
+      - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "8"
       - matchRegex:
           path: spec.template.spec.containers[0].args[0]
-          pattern: http://keycloak-service:8080/realms/inari
+          pattern: /realms/inari
+  - it: verifies admin access via client_credentials from the admin client secret
+    template: keycloak/realm-verify-job.yaml
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: grant_type=client_credentials
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: /admin/realms/inari
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KC_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: inari-keycloak-admin
+                key: client-id
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KC_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: inari-keycloak-admin
+                key: client-secret
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KC_BASE
+            value: http://keycloak-service:8080
+  - it: renders the verify job against an external keycloak instance
+    template: keycloak/realm-verify-job.yaml
+    set:
+      keycloak.enabled: false
+      keycloak.external.baseUrl: http://keycloak-service.keycloak.svc:8080
+      keycloak.external.issuerUrl: https://auth.example.org
+      keycloak.external.adminSecret.name: vault-keycloak-admin
+    asserts:
+      - hasDocuments:
+          count: 1
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KC_BASE
+            value: http://keycloak-service.keycloak.svc:8080
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KC_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: vault-keycloak-admin
+                key: client-secret
 
   # --- external / shared-instance mode (keycloak.enabled=false) ---
   - it: renders only the realm import when keycloak is disabled and importInto is set
@@ -205,6 +261,10 @@ tests:
       keycloak.external.baseUrl: http://keycloak-service.keycloak.svc:8080
       keycloak.external.issuerUrl: https://auth.example.org
       keycloak.external.adminSecret.name: inari-keycloak-admin
+    templates:
+      - keycloak/keycloak.yaml
+      - keycloak/realmimport-inari.yaml
+      - keycloak/admin-secret.yaml
     asserts:
       - hasDocuments:
           count: 0
