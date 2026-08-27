@@ -3,6 +3,21 @@ Inari platform stack installed.
 Prerequisite (never installed by this chart): the CNPG operator and the
 Keycloak operator (incl. CRDs) must already exist in the cluster.
 
+Exposure is Gateway API only: this chart never creates Ingress, Gateway or
+GatewayClass resources. Enable keycloak.route / inariServer.route and set
+gateway.name to point the rendered HTTPRoutes at a Gateway you have already
+deployed (a Gateway controller must be installed in the cluster).
+
+{{- if or .Values.keycloak.route.enabled .Values.inariServer.route.enabled }}
+HTTPRoutes attached to Gateway {{ required "gateway.name is required when a route is enabled" .Values.gateway.name }}{{ with .Values.gateway.namespace }} (namespace {{ . }}){{ end }}:
+  {{- if .Values.keycloak.route.enabled }}
+  keycloak:      {{ .Values.keycloak.route.hostnames | default (list "*") | join ", " }}
+  {{- end }}
+  {{- if .Values.inariServer.route.enabled }}
+  inari-server:  {{ .Values.inariServer.route.hostnames | default (list "*") | join ", " }}
+  {{- end }}
+{{- end }}
+
 Components:
   PostgreSQL (CNPG):  {{ include "inari-platform.postgresHost" . }} (cluster: {{ .Values.postgresql.clusterName }})
   {{- if .Values.keycloak.enabled }}

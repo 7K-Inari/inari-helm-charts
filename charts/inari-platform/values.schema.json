@@ -3,6 +3,21 @@
   "title": "inari-platform values",
   "type": "object",
   "properties": {
+    "gateway": {
+      "type": "object",
+      "description": "parentRef to an ALREADY-EXISTING Gateway. The chart never creates a Gateway/GatewayClass; a Gateway controller and Gateway must be deployed beforehand. Required (gateway.name) when any *.route.enabled=true.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "sectionName": {
+          "type": "string"
+        }
+      }
+    },
     "postgresql": {
       "type": "object",
       "properties": {
@@ -51,6 +66,21 @@
       "properties": {
         "enabled": {
           "type": "boolean"
+        },
+        "route": {
+          "type": "object",
+          "description": "HTTPRoute exposing Keycloak via the Gateway referenced in gateway:.",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "hostnames": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
         },
         "external": {
           "type": "object",
@@ -123,6 +153,21 @@
       "properties": {
         "enabled": {
           "type": "boolean"
+        },
+        "route": {
+          "type": "object",
+          "description": "HTTPRoute exposing inari-server via the Gateway referenced in gateway:.",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "hostnames": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
         },
         "oidcIssuerUrl": {
           "type": "string"
