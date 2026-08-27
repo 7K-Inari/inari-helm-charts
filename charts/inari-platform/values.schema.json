@@ -54,6 +54,7 @@
         },
         "adminRole": {
           "type": "string",
+          "minLength": 1,
           "description": "Client role on the inari-server client authorizing platform-admin API endpoints.",
           "default": "inari-platform-admin"
         },
