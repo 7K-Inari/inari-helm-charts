@@ -37,10 +37,10 @@ jobs:
         run: helm dependency build charts/inari-platform
 
       - name: helm lint
-        run: helm lint charts/inari-platform
+        run: helm lint charts/inari-platform && helm lint charts/inari-console
 
       - name: helm unittest
-        run: helm unittest charts/inari-platform
+        run: helm unittest charts/inari-platform charts/inari-console
 
       - name: chart-testing lint
         run: ct lint --config ct.yaml

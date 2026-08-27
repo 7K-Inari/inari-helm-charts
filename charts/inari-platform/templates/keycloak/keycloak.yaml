@@ -29,6 +29,10 @@ spec:
       key: keycloak-password
   http:
     httpEnabled: true
+  # Ingress is disabled: exposure goes through the chart's HTTPRoute
+  # (keycloak.route) against a pre-existing Gateway instead.
+  ingress:
+    enabled: false
   hostname:
     {{- with .Values.keycloak.hostname.hostname }}
     hostname: {{ . | quote }}

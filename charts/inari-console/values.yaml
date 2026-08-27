@@ -34,3 +34,22 @@ resources:
 service:
   type: ClusterIP
   port: 80
+
+# ---------------------------------------------------------------------------
+# Gateway API — parentRef to an ALREADY-EXISTING Gateway. This chart never
+# creates a Gateway/GatewayClass and never installs a Gateway controller:
+# a Gateway must be deployed beforehand.
+# ---------------------------------------------------------------------------
+gateway:
+  # Name of the existing Gateway. Required when route.enabled=true.
+  name: ""
+  # Namespace of the Gateway. Empty = same namespace as this release.
+  namespace: ""
+  # Optional listener name on the Gateway to attach the route to.
+  sectionName: ""
+
+# HTTPRoute exposing the console via the Gateway referenced in `gateway:`.
+route:
+  enabled: false
+  # e.g. ["console.example.org"]; empty = match all hostnames.
+  hostnames: []
