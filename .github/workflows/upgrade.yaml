@@ -61,9 +61,14 @@ jobs:
               --set postgresql.operator.enabled=false --set keycloak.crdsInstall=false --set keycloak.enabled=false || \
               echo "::warning::previous release $prev not installable (first release?) — installing PR chart directly"
             # upgrade to the PR chart
+            # --reset-values: helm upgrade merges the previous release's
+            # user-supplied values by default, which would carry the
+            # keycloak.enabled=false etc. overrides into the PR chart (its
+            # values schema then rejects the empty keycloak.external).
             helm dependency build "$chart"
             helm upgrade --install "$name-prev" "$chart" \
-              --namespace "$name-test" --wait --timeout 5m --skip-crds
+              --namespace "$name-test" --wait --timeout 15m --skip-crds \
+              --reset-values
             helm history "$name-prev" --namespace "$name-test"
           done
 

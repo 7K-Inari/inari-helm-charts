@@ -51,8 +51,7 @@ tests:
             ensure: present
             login: true
             passwordSecret:
-              name: inari-db
-              key: keycloak-password
+              name: inari-db-role-keycloak
       - contains:
           path: spec.managed.roles
           content:
@@ -60,8 +59,7 @@ tests:
             ensure: present
             login: true
             passwordSecret:
-              name: inari-db
-              key: openfga-password
+              name: inari-db-role-openfga
       - notExists:
           path: spec.bootstrap.initdb.postInitApplicationSQL
   - it: renders Database CRs for keycloak and openfga
@@ -109,6 +107,9 @@ tests:
             name: keycloak
   - it: renders the app secret with per-database passwords and the openfga datastore uri
     template: postgres/secrets.yaml
+    documentSelector:
+      path: metadata.name
+      value: inari-db
     set:
       postgresql.auth.passwords.keycloak: kc-secret
       postgresql.auth.passwords.openfga: fga-secret
@@ -123,6 +124,9 @@ tests:
           pattern: "postgres://openfga:fga-secret@postgresql-rw:5432/openfga" 
   - it: renders the inari database uri for the inari-server deployment
     template: postgres/secrets.yaml
+    documentSelector:
+      path: metadata.name
+      value: inari-db
     set:
       postgresql.auth.passwords.inari: inari-secret
     asserts:
@@ -135,3 +139,28 @@ tests:
           count: 0
     set:
       postgresql.enabled: false
+  - it: renders per-role basic-auth secrets for CNPG managed roles
+    template: postgres/secrets.yaml
+    documentSelector:
+      path: metadata.name
+      value: inari-db-role-openfga
+    asserts:
+      - isKind:
+          of: Secret
+      - equal:
+          path: type
+          value: kubernetes.io/basic-auth
+      - equal:
+          path: stringData.username
+          value: openfga
+  - it: skips the keycloak role secret when using an external Keycloak
+    template: postgres/secrets.yaml
+    set:
+      keycloak.enabled: false
+      keycloak.external.baseUrl: http://keycloak-service.keycloak.svc:8080
+      keycloak.external.issuerUrl: https://auth.example.org
+      keycloak.external.adminSecret.name: inari-keycloak-admin
+    asserts:
+      # only inari-db + inari-db-role-openfga remain
+      - hasDocuments:
+          count: 2

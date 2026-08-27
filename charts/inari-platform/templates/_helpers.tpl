@@ -63,6 +63,20 @@ openfga-uri, keycloak-username, keycloak-password, keycloak-admin-password.
 {{- end -}}
 
 {{/*
+Name of the kubernetes.io/basic-auth secret (username+password keys) backing
+CNPG managed.roles for a given database role. With existingSecret the chart
+cannot derive it, so it comes from postgresql.auth.roleSecrets.<role>
+(defaults to the in-cluster convention inari-db-role-<role>).
+*/}}
+{{- define "inari-platform.roleSecretName" -}}
+{{- if .root.Values.postgresql.auth.existingSecret -}}
+{{- index .root.Values.postgresql.auth.roleSecrets .role | default (printf "inari-db-role-%s" .role) -}}
+{{- else -}}
+{{- printf "inari-db-role-%s" .role -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Keycloak base URL resolution: bundled in-cluster service when
 keycloak.enabled, otherwise the external instance's (admin/backchannel) URL.
 Explicit inariServer.keycloakBaseUrl always wins.

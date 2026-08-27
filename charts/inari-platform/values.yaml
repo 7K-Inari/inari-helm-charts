@@ -25,6 +25,12 @@ postgresql:
     # inari-uri, openfga-uri, keycloak-username, keycloak-password,
     # keycloak-admin-password (bundled Keycloak admin pass).
     existingSecret: ""
+    # Only used with existingSecret: names of the per-role kubernetes.io/
+    # basic-auth secrets (username+password keys) backing CNPG managed.roles.
+    # Defaults to inari-db-role-<role>.
+    roleSecrets:
+      keycloak: ""
+      openfga: ""
     superuserPassword: inari-dev-superuser
     passwords:
       inari: inari-dev

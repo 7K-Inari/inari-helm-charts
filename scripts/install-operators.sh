@@ -39,6 +39,87 @@ else
   # the operator Deployment carries no namespace in the upstream manifest —
   # apply it into 'keycloak' explicitly
   kubectl -n keycloak apply -f "$BASE/kubernetes.yml"
+
+  # The upstream manifest is namespace-scoped: the operator only watches its
+  # install namespace, but the chart renders Keycloak/KeycloakRealmImport CRs
+  # into the release namespace. Widen it to cluster-wide (mirroring upstream's
+  # cluster-wide kustomization, which only exists for >= 26.7):
+  # ClusterRoleBindings for the two controller ClusterRoles, plus the
+  # pod/configmap permissions the namespaced Role only grants locally.
+  kubectl apply -f - <<'EOF'
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: keycloak-operator-cluster-wide
+  labels:
+    app.kubernetes.io/name: keycloak-operator
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keycloakrealmimportcontroller-cluster-role-binding
+  labels:
+    app.kubernetes.io/name: keycloak-operator
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: keycloakrealmimportcontroller-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: keycloak-operator
+    namespace: keycloak
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keycloakcontroller-cluster-role-binding
+  labels:
+    app.kubernetes.io/name: keycloak-operator
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: keycloakcontroller-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: keycloak-operator
+    namespace: keycloak
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keycloak-operator-cluster-wide-binding
+  labels:
+    app.kubernetes.io/name: keycloak-operator
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: keycloak-operator-cluster-wide
+subjects:
+  - kind: ServiceAccount
+    name: keycloak-operator
+    namespace: keycloak
+EOF
+  # JOSDK_ALL_NAMESPACES: reconcile Keycloak/KeycloakRealmImport CRs in every
+  # namespace instead of only the operator's own.
+  kubectl -n keycloak patch deployment keycloak-operator --type=strategic -p '
+spec:
+  template:
+    spec:
+      containers:
+        - name: keycloak-operator
+          env:
+            - name: QUARKUS_OPERATOR_SDK_CONTROLLERS_KEYCLOAKREALMIMPORTCONTROLLER_NAMESPACES
+              value: JOSDK_ALL_NAMESPACES
+            - name: QUARKUS_OPERATOR_SDK_CONTROLLERS_KEYCLOAKCONTROLLER_NAMESPACES
+              value: JOSDK_ALL_NAMESPACES
+'
   kubectl -n keycloak rollout status deployment/keycloak-operator --timeout=300s
 fi
 

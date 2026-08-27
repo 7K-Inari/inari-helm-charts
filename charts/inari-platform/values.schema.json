@@ -16,6 +16,18 @@
               "type": "string",
               "description": "Name of a pre-provisioned secret (e.g. Vault/ESO) carrying inari-uri, openfga-uri, openfga-password, postgres-password, username, password (and keycloak-* keys only for the bundled Keycloak)."
             },
+            "roleSecrets": {
+              "type": "object",
+              "description": "Only with existingSecret: per-role kubernetes.io/basic-auth secrets (username+password) for CNPG managed.roles.",
+              "properties": {
+                "keycloak": {
+                  "type": "string"
+                },
+                "openfga": {
+                  "type": "string"
+                }
+              }
+            },
             "passwords": {
               "type": "object",
               "properties": {

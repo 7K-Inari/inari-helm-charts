@@ -35,16 +35,16 @@ spec:
       - name: keycloak
         ensure: present
         login: true
+        # CNPG passwordSecret is name-only; the secret must be of type
+        # kubernetes.io/basic-auth with matching username/password keys.
         passwordSecret:
-          name: {{ include "inari-platform.dbSecretName" . }}
-          key: keycloak-password
+          name: {{ include "inari-platform.roleSecretName" (dict "root" . "role" "keycloak") }}
       {{- end }}
       - name: openfga
         ensure: present
         login: true
         passwordSecret:
-          name: {{ include "inari-platform.dbSecretName" . }}
-          key: openfga-password
+          name: {{ include "inari-platform.roleSecretName" (dict "root" . "role" "openfga") }}
 ---
 apiVersion: postgresql.cnpg.io/v1
 kind: Database
