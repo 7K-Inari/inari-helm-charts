@@ -1,0 +1,58 @@
+{{- if .Values.keycloak.realmSync.enabled }}
+# Idempotent realm sync (keycloak-config-cli) running on EVERY install/upgrade.
+# Unlike the one-shot KeycloakRealmImport, this applies realm changes (clients,
+# scopes, mappers, users) to an existing realm — realm drift across chart
+# upgrades is the gap this closes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "inari-platform.fullname" . }}-realm-sync
+  labels:
+    {{- include "inari-platform.componentLabels" (dict "root" . "component" "keycloak") | nindent 4 }}
+data:
+  realm-inari.json: |
+    {{- tpl (.Files.Get "files/realm-inari.json") . | fromJson | toYaml | nindent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "inari-platform.fullname" . }}-realm-sync
+  labels:
+    {{- include "inari-platform.componentLabels" (dict "root" . "component" "keycloak") | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "6"
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: keycloak-config-cli
+          image: {{ .Values.keycloak.realmSync.image | quote }}
+          env:
+            - name: KEYCLOAK_URL
+              value: {{ include "inari-platform.keycloakBaseUrl" . | quote }}
+            - name: KEYCLOAK_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "inari-platform.keycloakAdminSecretName" . }}
+                  key: {{ include "inari-platform.keycloakAdminUserKey" . }}
+            - name: KEYCLOAK_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "inari-platform.keycloakAdminSecretName" . }}
+                  key: {{ include "inari-platform.keycloakAdminPassKey" . }}
+            - name: IMPORT_FILES
+              value: /config/realm-inari.json
+            - name: IMPORT_REPLACE-PLACEHOLDERS
+              value: "false"
+          volumeMounts:
+            - name: realm
+              mountPath: /config
+      volumes:
+        - name: realm
+          configMap:
+            name: {{ include "inari-platform.fullname" . }}-realm-sync
+{{- end }}

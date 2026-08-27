@@ -3,6 +3,11 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   name: {{ .Values.postgresql.clusterName }}
+  {{- if .Values.dataProtection.keepOnUninstall }}
+  annotations:
+    # Survive helm uninstall / ArgoCD prune — the database and its PVCs stay.
+    "helm.sh/resource-policy": keep
+  {{- end }}
   labels:
     {{- include "inari-platform.componentLabels" (dict "root" . "component" "postgresql") | nindent 4 }}
 spec:
@@ -20,7 +25,7 @@ spec:
       database: inari
       owner: inari
       secret:
-        name: inari-db
+        name: {{ include "inari-platform.dbSecretName" . }}
       postInitApplicationSQL:
         {{- if .Values.keycloak.enabled }}
         - "CREATE ROLE keycloak LOGIN PASSWORD '$(keycloak-password)'"

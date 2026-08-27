@@ -103,6 +103,13 @@ keycloak:
     importInto:
       name: ""
       namespace: ""
+  # Idempotent realm sync on every install/upgrade (keycloak-config-cli
+  # hook job). The KeycloakRealmImport applies only at realm creation;
+  # this keeps clients/scopes/mappers in line with the chart over time.
+  # Works for bundled and external instances.
+  realmSync:
+    enabled: false
+    image: adorsys/keycloak-config-cli:6.5.1-26
   # admin credentials for the "admin" user (dev default; override in real installs)
   adminUser: admin
   adminPassword: admin-dev
@@ -187,3 +194,11 @@ argocd:
   enabled: false
 monitoring:
   enabled: false
+
+# ---------------------------------------------------------------------------
+# Data protection — uninstall safety for stateful resources.
+# ---------------------------------------------------------------------------
+dataProtection:
+  # Add helm.sh/resource-policy=keep to the CNPG Cluster: helm uninstall and
+  # ArgoCD prune then leave the database (and its PVCs) in place.
+  keepOnUninstall: false
