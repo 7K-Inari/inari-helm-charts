@@ -31,6 +31,8 @@ if kubectl get crd keycloaks.k8s.keycloak.org >/dev/null 2>&1; then
 else
   log "installing Keycloak operator $KC_VERSION"
   BASE="https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/$KC_VERSION/kubernetes"
+  # the upstream manifests reference the 'keycloak' namespace but never create it
+  kubectl create namespace keycloak --dry-run=client -o yaml | kubectl apply -f -
   kubectl apply -f "$BASE/keycloaks.k8s.keycloak.org-v1.yml"
   kubectl apply -f "$BASE/keycloakrealmimports.k8s.keycloak.org-v1.yml"
   kubectl apply -f "$BASE/kubernetes.yml"
