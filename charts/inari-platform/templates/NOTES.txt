@@ -1,14 +1,43 @@
 Inari platform stack installed.
 
+Prerequisite (never installed by this chart): the CNPG operator and the
+Keycloak operator (incl. CRDs) must already exist in the cluster.
+
 Components:
   PostgreSQL (CNPG):  {{ include "inari-platform.postgresHost" . }} (cluster: {{ .Values.postgresql.clusterName }})
-  Keycloak:           http://keycloak-service:8080  (realm "inari", admin console at /admin)
+  {{- if .Values.keycloak.enabled }}
+  Keycloak:           http://keycloak-service:8080  (bundled; realm "inari", admin console at /admin)
+  {{- else }}
+  Keycloak:           EXTERNAL — {{ .Values.keycloak.external.baseUrl }} (issuer: {{ include "inari-platform.oidcIssuerUrl" . }})
+  {{- end }}
   NATS (JetStream):   nats://nats:4222
   OpenFGA:            http://openfga:8080
-  inari-server:       {{ if .Values.inariServer.enabled }}ENABLED{{ else }}disabled (stub — image does not exist yet){{ end }}
-  inari-operator:     {{ if .Values.inariOperator.enabled }}ENABLED{{ else }}disabled (stub — image does not exist yet){{ end }}
+  inari-server:       {{ if .Values.inariServer.enabled }}ENABLED{{ else }}disabled (stub){{ end }}
+  inari-operator:     {{ if .Values.inariOperator.enabled }}ENABLED{{ else }}disabled (stub){{ end }}
 
-Smoke check:
-  kubectl run curl --rm -it --image=curlimages/curl -- http://keycloak-service:8080/realms/inari
+{{- if not .Values.keycloak.enabled }}
+External Keycloak notes:
+  - The realm "inari" must exist on the external instance.
+    {{- if .Values.keycloak.external.importInto.name }}
+    Realm import CR rendered into namespace {{ .Values.keycloak.external.importInto.namespace }} (operator-managed instance {{ .Values.keycloak.external.importInto.name }}).
+    {{- end }}
+    {{- if .Values.keycloak.realmSync.enabled }}
+    Realm sync job applies clients/scopes/mappers idempotently on every install/upgrade.
+    {{- else }}
+    ⚠ keycloak.realmSync.enabled=false — realm changes in future chart upgrades will NOT propagate.
+    Consider enabling it (keycloak.realmSync.enabled=true).
+    {{- end }}
+{{- end }}
 
-See docs/backup-restore.md for backup/restore and DR-drill procedures.
+{{- if .Values.keycloak.realmSync.enabled }}
+Realm sync: keycloak-config-cli hook job runs on every install/upgrade —
+realm changes in the chart propagate to the live realm.
+{{- end }}
+
+{{- if not .Values.dataProtection.keepOnUninstall }}
+⚠ dataProtection.keepOnUninstall=false — uninstalling this release (or an
+  ArgoCD prune) DELETES the CNPG cluster and its PVCs. Enable it for any
+  environment with data you care about.
+{{- end }}
+
+Backup/restore & DR drill: see docs/backup-restore.md (make backup/restore/dr-drill).

@@ -1,0 +1,78 @@
+name: upgrade
+
+# Install + upgrade drill on kind: installs the previous chart release, then
+# upgrades to the PR's chart. Catches upgrade-time breakage (schema, hooks,
+# CRDs, immutable fields) that a fresh-install check can't see.
+
+on:
+  pull_request:
+
+jobs:
+  install-upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.18.6
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.7.0
+        with:
+          version: v3.12.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: chart-upgrade
+          wait: 60s
+
+      # The chart assumes cluster-provided operators; install them first.
+      - name: Install prerequisite operators
+        run: ./scripts/install-operators.sh
+
+      - name: Install previous release, upgrade to PR chart
+        run: |
+          set -euo pipefail
+          # ct.yaml has debug: true — filter out ct's '>>>' log lines so only
+          # real chart paths drive the loop.
+          CHANGED=$(ct list-changed --config ct.yaml | grep -E '^charts/[^ ]+$' || true)
+          if [ -z "$CHANGED" ]; then
+            echo "no charts changed — nothing to install/upgrade"
+            exit 0
+          fi
+          for chart in $CHANGED; do
+            name=$(basename "$chart")
+            prev="$(git show "origin/main:${chart}/Chart.yaml" | awk '/^version:/{print $2}')"
+            echo "== $name: previous=$prev"
+            # install the previous released version from GHCR
+            # Operators + CRDs are pre-installed by install-operators.sh.
+            # --skip-crds covers crds/-dir releases; the --set flags cover
+            # releases whose CRDs/operator were template-gated or unconditional
+            # (0.7.0 renders the keycloak operator + ClusterRole whenever
+            # keycloak.enabled=true, with no separate gate — disable keycloak
+            # entirely for the previous release; the upgrade to the PR chart
+            # re-enables it).
+            helm upgrade --install "$name-prev" "oci://ghcr.io/7k-inari/charts/$name" \
+              --version "$prev" --namespace "$name-test" --create-namespace --wait --timeout 5m --skip-crds \
+              --set postgresql.operator.enabled=false --set keycloak.crdsInstall=false --set keycloak.enabled=false || \
+              echo "::warning::previous release $prev not installable (first release?) — installing PR chart directly"
+            # upgrade to the PR chart
+            # --reset-values: helm upgrade merges the previous release's
+            # user-supplied values by default, which would carry the
+            # keycloak.enabled=false etc. overrides into the PR chart (its
+            # values schema then rejects the empty keycloak.external).
+            helm dependency build "$chart"
+            helm upgrade --install "$name-prev" "$chart" \
+              --namespace "$name-test" --wait --timeout 15m --skip-crds \
+              --reset-values
+            helm history "$name-prev" --namespace "$name-test"
+          done
+
+      - name: Dump on failure
+        if: failure()
+        run: |
+          kubectl get pods -A | grep -v Running || true

@@ -14,10 +14,6 @@ global:
 # ---------------------------------------------------------------------------
 postgresql:
   enabled: true
-  operator:
-    # Install the CNPG operator (subchart) + CRDs. Disable when the cluster
-    # already runs a shared CNPG operator (e.g. cnpg-system).
-    enabled: true
   clusterName: postgresql
   instances: 1
   storageSize: 10Gi
@@ -29,24 +25,17 @@ postgresql:
     # inari-uri, openfga-uri, keycloak-username, keycloak-password,
     # keycloak-admin-password (bundled Keycloak admin pass).
     existingSecret: ""
+    # Only used with existingSecret: names of the per-role kubernetes.io/
+    # basic-auth secrets (username+password keys) backing CNPG managed.roles.
+    # Defaults to inari-db-role-<role>.
+    roleSecrets:
+      keycloak: ""
+      openfga: ""
     superuserPassword: inari-dev-superuser
     passwords:
       inari: inari-dev
       keycloak: inari-dev
       openfga: inari-dev
-# cloudnative-pg operator subchart values (top-level key — Helm passes values
-# to subcharts by chart name, not under the `postgresql` section).
-# CRDs are vendored in this chart's crds/ directory so Helm installs them
-# before any template (including our Cluster CR) — disable the subchart's
-# copy to avoid managing them twice.
-cloudnative-pg:
-  crds:
-    create: false
-  # operator needs no CRD conversion webhook config for M0
-  resources:
-    requests:
-      cpu: 50m
-      memory: 128Mi
 
 # Escape hatch: skip the CNPG cluster and point everything at an external DB.
 # When postgresql.enabled=false, set these to your external endpoints.
@@ -62,9 +51,6 @@ externalPostgres:
 # ---------------------------------------------------------------------------
 keycloak:
   enabled: true
-  # Install the Keycloak operator CRDs. Disable when reusing an existing
-  # operator-managed instance (keycloak.enabled=false + external.importInto).
-  crdsInstall: true
   instances: 1
   # Pin Keycloak + operator to a matched version. The operator's default
   # image (26.1.0) breaks --optimized with newer server images; setting
@@ -103,6 +89,13 @@ keycloak:
     importInto:
       name: ""
       namespace: ""
+  # Idempotent realm sync on every install/upgrade (keycloak-config-cli
+  # hook job). The KeycloakRealmImport applies only at realm creation;
+  # this keeps clients/scopes/mappers in line with the chart over time.
+  # Works for bundled and external instances.
+  realmSync:
+    enabled: false
+    image: adorsys/keycloak-config-cli:6.5.1-26
   # admin credentials for the "admin" user (dev default; override in real installs)
   adminUser: admin
   adminPassword: admin-dev
@@ -187,3 +180,11 @@ argocd:
   enabled: false
 monitoring:
   enabled: false
+
+# ---------------------------------------------------------------------------
+# Data protection — uninstall safety for stateful resources.
+# ---------------------------------------------------------------------------
+dataProtection:
+  # Add helm.sh/resource-policy=keep to the CNPG Cluster: helm uninstall and
+  # ArgoCD prune then leave the database (and its PVCs) in place.
+  keepOnUninstall: false

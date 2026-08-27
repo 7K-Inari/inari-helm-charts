@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json.schemastore.org/chart",
+  "title": "inari-platform values",
+  "type": "object",
+  "properties": {
+    "postgresql": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "existingSecret": {
+              "type": "string",
+              "description": "Name of a pre-provisioned secret (e.g. Vault/ESO) carrying inari-uri, openfga-uri, openfga-password, postgres-password, username, password (and keycloak-* keys only for the bundled Keycloak)."
+            },
+            "roleSecrets": {
+              "type": "object",
+              "description": "Only with existingSecret: per-role kubernetes.io/basic-auth secrets (username+password) for CNPG managed.roles.",
+              "properties": {
+                "keycloak": {
+                  "type": "string"
+                },
+                "openfga": {
+                  "type": "string"
+                }
+              }
+            },
+            "passwords": {
+              "type": "object",
+              "properties": {
+                "inari": {
+                  "type": "string"
+                },
+                "keycloak": {
+                  "type": "string"
+                },
+                "openfga": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "keycloak": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "external": {
+          "type": "object",
+          "description": "Required when keycloak.enabled=false.",
+          "properties": {
+            "baseUrl": {
+              "type": "string"
+            },
+            "issuerUrl": {
+              "type": "string"
+            },
+            "adminSecret": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "userKey": {
+                  "type": "string"
+                },
+                "passKey": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ]
+            },
+            "importInto": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "namespace": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "realmSync": {
+          "type": "object",
+          "description": "Idempotent realm sync via keycloak-config-cli on install/upgrade \u2014 keeps the realm (clients, mappers, users) in line with the chart across upgrades, unlike the one-shot KeycloakRealmImport.",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "image": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "inariServer": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "oidcIssuerUrl": {
+          "type": "string"
+        },
+        "keycloakBaseUrl": {
+          "type": "string"
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "inariOperator": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "dataProtection": {
+      "type": "object",
+      "description": "Uninstall safety for stateful resources.",
+      "properties": {
+        "keepOnUninstall": {
+          "type": "boolean",
+          "description": "Add helm.sh/resource-policy=keep to the CNPG Cluster so helm uninstall (or ArgoCD prune) does not wipe the database."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "keycloak": {
+            "properties": {
+              "enabled": {
+                "const": false
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "keycloak": {
+            "properties": {
+              "external": {
+                "required": [
+                  "baseUrl",
+                  "issuerUrl",
+                  "adminSecret"
+                ],
+                "properties": {
+                  "baseUrl": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "issuerUrl": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "adminSecret": {
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "description": "Umbrella chart for the Inari platform cluster. This chart NEVER installs operators: the CNPG operator and the Keycloak operator (incl. their CRDs) must already be installed in the cluster. keycloak.enabled=true deploys a dedicated Keycloak instance via the existing operator; false uses keycloak.external (an existing instance)."
+}

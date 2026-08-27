@@ -1,10 +1,11 @@
-suite: keycloak operator, realm import
+suite: keycloak instance, realm import, external instance
 templates:
-  - keycloak/operator.yaml
   - keycloak/keycloak.yaml
   - keycloak/realmimport-inari.yaml
   - keycloak/admin-secret.yaml
   - keycloak/realm-verify-job.yaml
+  - keycloak/realm-sync-job.yaml
+  - inari-server/deployment.yaml
 tests:
   - it: renders the Keycloak CR wired to the CNPG cluster and inari-db secret
     template: keycloak/keycloak.yaml
@@ -74,31 +75,6 @@ tests:
       - equal:
           path: spec.hostname.hostname
           value: http://keycloak.local:8080
-  - it: pins the operator deployment and related keycloak image
-    template: keycloak/operator.yaml
-    documentSelector:
-      path: kind
-      value: Deployment
-    asserts:
-      - equal:
-          path: spec.template.spec.containers[0].image
-          value: quay.io/keycloak/keycloak-operator:26.3.2
-      - contains:
-          path: spec.template.spec.containers[0].env
-          content:
-            name: RELATED_IMAGE_KEYCLOAK
-            value: quay.io/keycloak/keycloak:26.3.2
-  - it: allows overriding the operator image
-    template: keycloak/operator.yaml
-    documentSelector:
-      path: kind
-      value: Deployment
-    set:
-      keycloak.operatorImage: quay.io/keycloak/keycloak-operator:99.0.0
-    asserts:
-      - equal:
-          path: spec.template.spec.containers[0].image
-          value: quay.io/keycloak/keycloak-operator:99.0.0
   - it: renders the KeycloakRealmImport with the inari realm
     template: keycloak/realmimport-inari.yaml
     asserts:
@@ -152,15 +128,20 @@ tests:
               access.token.claim: "true"
               id.token.claim: "false"
               userinfo.token.claim: "false"
-  - it: renders the operator Deployment
-    template: keycloak/operator.yaml
-    documentSelector:
-      path: kind
-      value: Deployment
+  - it: renders the console redirect URIs from values (tpl-rendered realm)
+    template: keycloak/realmimport-inari.yaml
+    set:
+      keycloak.consoleRedirectUris:
+        - https://inari.example.org/*
+      keycloak.consoleWebOrigins:
+        - https://inari.example.org
     asserts:
-      - equal:
-          path: metadata.name
-          value: keycloak-operator
+      - contains:
+          path: spec.realm.clients[?(@.clientId == "inari-ui")].redirectUris
+          content: https://inari.example.org/*
+      - contains:
+          path: spec.realm.clients[?(@.clientId == "inari-ui")].webOrigins
+          content: https://inari.example.org
   - it: renders the bootstrap admin secret with username/password keys
     template: keycloak/admin-secret.yaml
     asserts:
@@ -182,9 +163,85 @@ tests:
       - matchRegex:
           path: spec.template.spec.containers[0].args[0]
           pattern: http://keycloak-service:8080/realms/inari
-  - it: renders nothing when keycloak is disabled
+
+  # --- external / shared-instance mode (keycloak.enabled=false) ---
+  - it: renders only the realm import when keycloak is disabled and importInto is set
+    template: keycloak/realmimport-inari.yaml
     set:
       keycloak.enabled: false
+      keycloak.external.baseUrl: http://keycloak-service.keycloak.svc:8080
+      keycloak.external.issuerUrl: https://auth.example.org
+      keycloak.external.adminSecret.name: inari-keycloak-admin
+      keycloak.external.importInto.name: keycloak
+      keycloak.external.importInto.namespace: keycloak
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: KeycloakRealmImport
+      - equal:
+          path: metadata.namespace
+          value: keycloak
+      - equal:
+          path: spec.keycloakCRName
+          value: keycloak
+  - it: renders nothing keycloak-side when disabled without importInto
+    set:
+      keycloak.enabled: false
+      keycloak.external.baseUrl: http://keycloak-service.keycloak.svc:8080
+      keycloak.external.issuerUrl: https://auth.example.org
+      keycloak.external.adminSecret.name: inari-keycloak-admin
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: points the server at the external issuer and base URL
+    template: inari-server/deployment.yaml
+    set:
+      inariServer.enabled: true
+      keycloak.enabled: false
+      keycloak.external.baseUrl: http://keycloak-service.keycloak.svc:8080
+      keycloak.external.issuerUrl: https://auth.example.org
+      keycloak.external.adminSecret.name: inari-keycloak-admin
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: INARI_OIDC_ISSUER_URL
+            value: https://auth.example.org/realms/inari
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: INARI_KEYCLOAK_BASE_URL
+            value: http://keycloak-service.keycloak.svc:8080
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: INARI_KEYCLOAK_ADMIN_USER
+            valueFrom:
+              secretKeyRef:
+                name: inari-keycloak-admin
+                key: username
+  - it: renders the realm-sync job when realmSync is enabled
+    template: keycloak/realm-sync-job.yaml
+    set:
+      keycloak.realmSync.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+        documentSelector:
+          path: kind
+          value: Job
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-inari-platform-realm-sync
+        documentSelector:
+          path: kind
+          value: ConfigMap
+  - it: renders no realm-sync job by default
+    template: keycloak/realm-sync-job.yaml
     asserts:
       - hasDocuments:
           count: 0
