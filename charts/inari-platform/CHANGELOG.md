@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.7.0...inari-platform-v0.8.0) (2026-08-27)
+
+
+### Features
+
+* **chart:** install/upgrade hardening ([#28](https://github.com/7K-Inari/inari-helm-charts/issues/28)) ([3b207fd](https://github.com/7K-Inari/inari-helm-charts/commit/3b207fd17ff8dc6e4474a6debb72233fffe70089))
+
 ## [0.7.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.6.0...inari-platform-v0.7.0) (2026-08-21)
 
 
