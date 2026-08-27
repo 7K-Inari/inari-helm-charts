@@ -32,7 +32,10 @@
           "value": "dev-admin",
           "temporary": false
         }
-      ]
+      ],
+      "clientRoles": {
+        "inari-server": [{{ .Values.keycloak.adminRole | toJson }}]
+      }
     }
   ],
   "clients": [
@@ -52,6 +55,12 @@
       "publicClient": true,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
+      "roles": [
+        {
+          "name": {{ .Values.keycloak.adminRole | toJson }},
+          "description": "Inari platform administrator"
+        }
+      ],
       "redirectUris": [
         "http://localhost:8080/*",
         "http://keycloak.local:8080/*"

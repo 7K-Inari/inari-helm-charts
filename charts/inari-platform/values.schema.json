@@ -52,6 +52,11 @@
         "enabled": {
           "type": "boolean"
         },
+        "adminRole": {
+          "type": "string",
+          "description": "Client role on the inari-server client authorizing platform-admin API endpoints.",
+          "default": "inari-platform-admin"
+        },
         "external": {
           "type": "object",
           "description": "Required when keycloak.enabled=false.",
