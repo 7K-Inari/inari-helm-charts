@@ -56,7 +56,7 @@ PostgreSQL host used by sibling components: CNPG rw service or external.
 {{/*
 Credential secret name: created by the chart from values, or an existing
 secret (e.g. synced from Vault via ESO). Contract keys: inari-uri,
-openfga-uri, keycloak-username, keycloak-password, keycloak-admin-password.
+openfga-uri, keycloak-username, keycloak-password.
 */}}
 {{- define "inari-platform.dbSecretName" -}}
 {{- .Values.postgresql.auth.existingSecret | default "inari-db" -}}
@@ -106,19 +106,19 @@ external.issuerUrl + /realms/<realm>, then the bundled default.
 {{- end -}}
 
 {{/*
-Keycloak admin credentials secret + keys: bundled chart-created secret or an
-external one synced from Vault.
+Keycloak admin client credentials secret + keys: bundled chart-created secret
+or an external one synced from Vault.
 */}}
 {{- define "inari-platform.keycloakAdminSecretName" -}}
 {{- if .Values.keycloak.enabled -}}
-{{- "inari-db" -}}
+{{- "inari-keycloak-admin" -}}
 {{- else -}}
 {{- required "keycloak.external.adminSecret.name is required when keycloak.enabled=false" .Values.keycloak.external.adminSecret.name -}}
 {{- end -}}
 {{- end -}}
-{{- define "inari-platform.keycloakAdminUserKey" -}}
-{{- if .Values.keycloak.enabled -}}keycloak-admin-user{{- else -}}{{ .Values.keycloak.external.adminSecret.userKey | default "username" }}{{- end -}}
+{{- define "inari-platform.keycloakAdminClientIdKey" -}}
+{{- if .Values.keycloak.enabled -}}client-id{{- else -}}{{ .Values.keycloak.external.adminSecret.clientIdKey | default "client-id" }}{{- end -}}
 {{- end -}}
-{{- define "inari-platform.keycloakAdminPassKey" -}}
-{{- if .Values.keycloak.enabled -}}keycloak-admin-password{{- else -}}{{ .Values.keycloak.external.adminSecret.passKey | default "password" }}{{- end -}}
+{{- define "inari-platform.keycloakAdminClientSecretKey" -}}
+{{- if .Values.keycloak.enabled -}}client-secret{{- else -}}{{ .Values.keycloak.external.adminSecret.clientSecretKey | default "client-secret" }}{{- end -}}
 {{- end -}}

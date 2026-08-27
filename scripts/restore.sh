@@ -68,10 +68,11 @@ kubectl_ns rollout restart deployment/openfga
 wait_deployment openfga 300s
 
 log "restoring Keycloak realm 'inari'"
-KC_ADMIN_PW="$(kubectl_ns get secret inari-db -o jsonpath='{.data.keycloak-admin-password}' | base64 -d)"
+KC_ADMIN_USER="$(kubectl_ns get secret keycloak-initial-admin -o jsonpath='{.data.username}' | base64 -d)"
+KC_ADMIN_PW="$(kubectl_ns get secret keycloak-initial-admin -o jsonpath='{.data.password}' | base64 -d)"
 KC_TOKEN="$(box "curl -sS -X POST http://keycloak-service:8080/realms/master/protocol/openid-connect/token \
   -H 'Content-Type: application/x-www-form-urlencoded' \
-  -d 'grant_type=password&client_id=admin-cli&username=admin&password=${KC_ADMIN_PW}' \
+  -d 'grant_type=password&client_id=admin-cli&username=${KC_ADMIN_USER}&password=${KC_ADMIN_PW}' \
   | jq -r .access_token")"
 [[ "$KC_TOKEN" != "null" && -n "$KC_TOKEN" ]] || die "could not obtain Keycloak admin token"
 box_cp "$BK/keycloak/realm-inari.json" /tmp/realm-inari.json

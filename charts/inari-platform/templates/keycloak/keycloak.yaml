@@ -13,10 +13,9 @@ spec:
   # the pinned stock image is not, so keep the normal build path
   startOptimized: false
   {{- end }}
-  bootstrapAdmin:
-    user:
-      # secret with literal 'username'/'password' keys (operator contract)
-      secret: inari-keycloak-admin
+  # No bootstrapAdmin block: the operator auto-generates a temporary
+  # bootstrap admin secret (keycloak-initial-admin). Workloads authenticate
+  # via the inari-platform-admin service account instead.
   db:
     vendor: postgres
     host: {{ include "inari-platform.postgresHost" . }}

@@ -37,6 +37,16 @@
   ],
   "clients": [
     {
+      "clientId": {{ .Values.keycloak.adminClient.clientId | toJson }},
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": {{ .Values.keycloak.adminClient.secret | toJson }},
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    },
+    {
       "clientId": "inari-server",
       "enabled": true,
       "publicClient": true,

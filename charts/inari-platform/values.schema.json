@@ -68,10 +68,10 @@
                 "name": {
                   "type": "string"
                 },
-                "userKey": {
+                "clientIdKey": {
                   "type": "string"
                 },
-                "passKey": {
+                "clientSecretKey": {
                   "type": "string"
                 }
               },
@@ -96,9 +96,21 @@
           "type": "object",
           "description": "Idempotent realm sync via keycloak-config-cli on install/upgrade \u2014 keeps the realm (clients, mappers, users) in line with the chart across upgrades, unlike the one-shot KeycloakRealmImport.",
           "properties": {
-            "enabled": {
-              "type": "boolean"
+        "enabled": {
+          "type": "boolean"
+        },
+        "adminClient": {
+          "type": "object",
+          "description": "Confidential client (service account) used by inari-server / inari-operator for Keycloak Admin REST calls via client_credentials.",
+          "properties": {
+            "clientId": {
+              "type": "string"
             },
+            "secret": {
+              "type": "string"
+            }
+          }
+        },
             "image": {
               "type": "string"
             }

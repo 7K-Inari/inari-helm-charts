@@ -22,7 +22,7 @@ metadata:
   annotations:
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-    "helm.sh/hook-weight": "6"
+    "helm.sh/hook-weight": "7"
 spec:
   backoffLimit: 3
   template:
@@ -34,16 +34,20 @@ spec:
           env:
             - name: KEYCLOAK_URL
               value: {{ include "inari-platform.keycloakBaseUrl" . | quote }}
-            - name: KEYCLOAK_USER
+            # The admin client lives in the "inari" realm; config-cli logs in
+            # with client credentials instead of an admin user/password.
+            - name: KEYCLOAK_REALM
+              value: inari
+            - name: KEYCLOAK_CLIENT_ID
               valueFrom:
                 secretKeyRef:
                   name: {{ include "inari-platform.keycloakAdminSecretName" . }}
-                  key: {{ include "inari-platform.keycloakAdminUserKey" . }}
-            - name: KEYCLOAK_PASSWORD
+                  key: {{ include "inari-platform.keycloakAdminClientIdKey" . }}
+            - name: KEYCLOAK_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "inari-platform.keycloakAdminSecretName" . }}
-                  key: {{ include "inari-platform.keycloakAdminPassKey" . }}
+                  key: {{ include "inari-platform.keycloakAdminClientSecretKey" . }}
             - name: IMPORT_FILES
               value: /config/realm-inari.json
             - name: IMPORT_REPLACE-PLACEHOLDERS

@@ -50,4 +50,4 @@ verify_stack
 
 log "bootstrap complete."
 log "  Keycloak admin console: kubectl -n $NAMESPACE port-forward svc/keycloak-service 8080:8080"
-log "  (admin credentials from secret 'inari-db', key 'keycloak-admin-password')"
+log "  (bootstrap admin credentials from secret 'keycloak-initial-admin', keys 'username'/'password')"

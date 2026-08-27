@@ -94,6 +94,7 @@ unless `--keep` is passed.
 - `no CNPG primary pod found` — cluster mid-failover; retry once the CNPG
   `Cluster` reports healthy.
 - `could not obtain Keycloak admin token` — Keycloak not fully up, or the
-  `inari-db` secret was rotated out of band.
+  operator-generated `keycloak-initial-admin` bootstrap secret was rotated or
+  deleted out of band.
 - OpenFGA/NATS steps skip with a warning when the backup has no data for them;
   that is expected for pre-control-plane backups.

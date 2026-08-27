@@ -22,17 +22,20 @@ spec:
           image: "{{ .Values.inariOperator.image.repository }}:{{ .Values.inariOperator.image.tag }}"
           imagePullPolicy: {{ .Values.inariOperator.image.pullPolicy }}
           env:
-            - name: INARI_KEYCLOAK_URL
-              value: http://keycloak-service:8080
-            - name: INARI_KEYCLOAK_REALM
+            - name: KEYCLOAK_URL
+              value: {{ include "inari-platform.keycloakBaseUrl" . | quote }}
+            - name: KEYCLOAK_TOKEN_REALM
               value: inari
             - name: KEYCLOAK_CLIENT_ID
-              value: {{ .Values.inariOperator.keycloakClientId | default "inari-operator" | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "inari-platform.keycloakAdminSecretName" . }}
+                  key: {{ include "inari-platform.keycloakAdminClientIdKey" . }}
             - name: KEYCLOAK_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ required "keycloak.operatorAdminSecret.name is required when inariOperator.enabled=true (the operator exits with 'missing keycloak client secret' without it)" .Values.keycloak.operatorAdminSecret.name }}
-                  key: {{ .Values.keycloak.operatorAdminSecret.clientSecretKey | default "client-secret" }}
+                  name: {{ include "inari-platform.keycloakAdminSecretName" . }}
+                  key: {{ include "inari-platform.keycloakAdminClientSecretKey" . }}
           {{- with .Values.inariOperator.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
