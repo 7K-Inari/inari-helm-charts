@@ -9,14 +9,6 @@
         "enabled": {
           "type": "boolean"
         },
-        "operator": {
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "type": "boolean"
-            }
-          }
-        },
         "auth": {
           "type": "object",
           "properties": {
@@ -46,9 +38,6 @@
       "type": "object",
       "properties": {
         "enabled": {
-          "type": "boolean"
-        },
-        "crdsInstall": {
           "type": "boolean"
         },
         "external": {
@@ -196,5 +185,6 @@
         }
       }
     }
-  ]
+  ],
+  "description": "Umbrella chart for the Inari platform cluster. This chart NEVER installs operators: the CNPG operator and the Keycloak operator (incl. their CRDs) must already be installed in the cluster. keycloak.enabled=true deploys a dedicated Keycloak instance via the existing operator; false uses keycloak.external (an existing instance)."
 }

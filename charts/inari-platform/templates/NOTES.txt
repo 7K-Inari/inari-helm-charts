@@ -1,5 +1,8 @@
 Inari platform stack installed.
 
+Prerequisite (never installed by this chart): the CNPG operator and the
+Keycloak operator (incl. CRDs) must already exist in the cluster.
+
 Components:
   PostgreSQL (CNPG):  {{ include "inari-platform.postgresHost" . }} (cluster: {{ .Values.postgresql.clusterName }})
   {{- if .Values.keycloak.enabled }}
