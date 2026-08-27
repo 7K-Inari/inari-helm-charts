@@ -38,6 +38,8 @@ spec:
               value: {{ include "inari-platform.keycloakBaseUrl" . | quote }}
             - name: INARI_KEYCLOAK_REALM
               value: "inari"
+            - name: INARI_PLATFORM_ADMIN_ROLE
+              value: {{ .Values.keycloak.adminRole | quote }}
             - name: INARI_KEYCLOAK_CLIENT_ID
               valueFrom:
                 secretKeyRef:

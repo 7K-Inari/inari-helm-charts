@@ -116,6 +116,20 @@ keycloak:
   # instances (keycloak.enabled=false) create the client and role mapping
   # yourself and point external.adminSecret at a secret with client-id /
   # client-secret keys.
+  # Client role on the inari-server client authorizing platform-admin API
+  # endpoints. Created by the realm import; inari-server enforces it against
+  # resource_access["inari-server"].roles. Note: the realm import applies only
+  # at realm creation — renaming on an existing realm requires realmSync or a
+  # manual change in Keycloak.
+  adminRole: inari-platform-admin
+  #
+  # Verification: a post-install/post-upgrade hook Job (realm-verify, hook
+  # weight 8 — after client-setup and realm-sync) proves this auth path
+  # works before the release is marked successful: it waits for the public
+  # realm endpoint, obtains a token via client_credentials from the same
+  # inari-keycloak-admin secret the server/operator use, and requires
+  # GET /admin/realms/inari to return 200, failing the release otherwise.
+  # For external instances the same check runs against external.baseUrl.
   adminClient:
     clientId: inari-platform-admin
     # dev default; override in real installs (secret stored in
