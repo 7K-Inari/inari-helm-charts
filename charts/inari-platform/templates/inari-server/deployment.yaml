@@ -38,26 +38,16 @@ spec:
               value: {{ include "inari-platform.keycloakBaseUrl" . | quote }}
             - name: INARI_KEYCLOAK_REALM
               value: "inari"
-            {{- if .Values.keycloak.enabled }}
-            - name: INARI_KEYCLOAK_ADMIN_USER
-              value: {{ .Values.keycloak.adminUser | quote }}
-            - name: INARI_KEYCLOAK_ADMIN_PASS
+            - name: INARI_KEYCLOAK_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: inari-db
-                  key: keycloak-admin-password
-            {{- else }}
-            - name: INARI_KEYCLOAK_ADMIN_USER
+                  name: {{ include "inari-platform.keycloakAdminSecretName" . }}
+                  key: {{ include "inari-platform.keycloakAdminClientIdKey" . }}
+            - name: INARI_KEYCLOAK_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.keycloak.external.adminSecret.name }}
-                  key: {{ .Values.keycloak.external.adminSecret.userKey | default "username" }}
-            - name: INARI_KEYCLOAK_ADMIN_PASS
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.keycloak.external.adminSecret.name }}
-                  key: {{ .Values.keycloak.external.adminSecret.passKey | default "password" }}
-            {{- end }}
+                  name: {{ include "inari-platform.keycloakAdminSecretName" . }}
+                  key: {{ include "inari-platform.keycloakAdminClientSecretKey" . }}
             {{- with .Values.inariServer.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

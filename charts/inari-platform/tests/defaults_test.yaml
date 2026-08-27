@@ -6,6 +6,7 @@ templates:
   - keycloak/realmimport-inari.yaml
   - keycloak/admin-secret.yaml
   - keycloak/realm-verify-job.yaml
+  - keycloak/client-setup-job.yaml
 tests:
   - it: every rendered first-party resource carries standard labels
     asserts:

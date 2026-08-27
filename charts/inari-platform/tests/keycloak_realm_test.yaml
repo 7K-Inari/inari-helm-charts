@@ -5,6 +5,7 @@ templates:
   - keycloak/admin-secret.yaml
   - keycloak/realm-verify-job.yaml
   - keycloak/realm-sync-job.yaml
+  - keycloak/client-setup-job.yaml
   - inari-server/deployment.yaml
 tests:
   - it: renders the Keycloak CR wired to the CNPG cluster and inari-db secret
@@ -26,9 +27,8 @@ tests:
       - equal:
           path: spec.db.passwordSecret.key
           value: keycloak-password
-      - equal:
-          path: spec.bootstrapAdmin.user.secret
-          value: inari-keycloak-admin
+      - notExists:
+          path: spec.bootstrapAdmin
   - it: pins the keycloak image and disables startOptimized for the custom image
     template: keycloak/keycloak.yaml
     asserts:
@@ -142,16 +142,30 @@ tests:
       - contains:
           path: spec.realm.clients[?(@.clientId == "inari-ui")].webOrigins
           content: https://inari.example.org
-  - it: renders the bootstrap admin secret with username/password keys
+  - it: renders the confidential admin client with a service account in the realm import
+    template: keycloak/realmimport-inari.yaml
+    asserts:
+      - contains:
+          path: spec.realm.clients
+          content:
+            clientId: inari-platform-admin
+            enabled: true
+            publicClient: false
+            clientAuthenticatorType: client-secret
+            secret: inari-dev-admin-client
+            standardFlowEnabled: false
+            directAccessGrantsEnabled: false
+            serviceAccountsEnabled: true
+  - it: renders the admin client secret with client-id/client-secret keys
     template: keycloak/admin-secret.yaml
     asserts:
       - isKind:
           of: Secret
       - equal:
-          path: stringData.username
-          value: admin
+          path: stringData.client-id
+          value: inari-platform-admin
       - exists:
-          path: stringData.password
+          path: stringData.client-secret
   - it: renders the verify job as a post-install/post-upgrade hook targeting the keycloak service
     template: keycloak/realm-verify-job.yaml
     asserts:
@@ -216,10 +230,32 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
-            name: INARI_KEYCLOAK_ADMIN_USER
+            name: INARI_KEYCLOAK_CLIENT_ID
             valueFrom:
               secretKeyRef:
                 name: inari-keycloak-admin
+                key: client-id
+  - it: renders the client-setup job granting realm-admin to the admin client service account
+    template: keycloak/client-setup-job.yaml
+    asserts:
+      - isKind:
+          of: Job
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+      - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "6"
+      - matchRegex:
+          path: spec.template.spec.containers[0].args[0]
+          pattern: role-mappings/clients
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KC_ADMIN_USER
+            valueFrom:
+              secretKeyRef:
+                name: keycloak-initial-admin
                 key: username
   - it: renders the realm-sync job when realmSync is enabled
     template: keycloak/realm-sync-job.yaml

@@ -22,8 +22,7 @@ postgresql:
   auth:
     # When set, the chart does not create the inari-db secret; the named
     # secret must exist (e.g. synced from Vault via ESO) and carry keys:
-    # inari-uri, openfga-uri, keycloak-username, keycloak-password,
-    # keycloak-admin-password (bundled Keycloak admin pass).
+    # inari-uri, openfga-uri, keycloak-username, keycloak-password.
     existingSecret: ""
     # Only used with existingSecret: names of the per-role kubernetes.io/
     # basic-auth secrets (username+password keys) backing CNPG managed.roles.
@@ -84,8 +83,8 @@ keycloak:
     issuerUrl: ""
     adminSecret:
       name: ""
-      userKey: username
-      passKey: password
+      clientIdKey: client-id
+      clientSecretKey: client-secret
     importInto:
       name: ""
       namespace: ""
@@ -96,17 +95,18 @@ keycloak:
   realmSync:
     enabled: false
     image: adorsys/keycloak-config-cli:6.5.1-26
-  # Confidential OIDC client credentials consumed by inari-operator. The named
-  # secret must already exist (e.g. synced from Vault via ESO) and carry the
-  # client secret under clientSecretKey. helm template fails when
-  # inariOperator.enabled=true and name is empty — without it the operator
-  # exits with "missing keycloak client secret".
-  operatorAdminSecret:
-    name: ""
-    clientSecretKey: client-secret
-  # admin credentials for the "admin" user (dev default; override in real installs)
-  adminUser: admin
-  adminPassword: admin-dev
+  # Confidential client used by inari-server / inari-operator to call the
+  # Keycloak Admin REST API (client_credentials grant; no admin user/password
+  # anywhere). Rendered into the realm import; a post-install hook job grants
+  # its service account the realm-management realm-admin role. For external
+  # instances (keycloak.enabled=false) create the client and role mapping
+  # yourself and point external.adminSecret at a secret with client-id /
+  # client-secret keys.
+  adminClient:
+    clientId: inari-platform-admin
+    # dev default; override in real installs (secret stored in
+    # inari-keycloak-admin)
+    secret: inari-dev-admin-client
   resources:
     requests:
       cpu: 250m
@@ -173,8 +173,6 @@ inariOperator:
     tag: "0.0.0"
     pullPolicy: IfNotPresent
   replicaCount: 1
-  # Keycloak confidential client (realm "inari") the operator authenticates as.
-  keycloakClientId: inari-operator
   resources: {}
 
 # ---------------------------------------------------------------------------
