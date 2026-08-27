@@ -3,6 +3,8 @@ templates:
   - inari-operator/deployment.yaml
   - inari-operator/serviceaccount.yaml
   - inari-operator/rbac.yaml
+set:
+  keycloak.operatorAdminSecret.name: inari-operator-keycloak-client
 tests:
   - it: renders nothing by default
     asserts:
@@ -12,6 +14,7 @@ tests:
     template: inari-operator/deployment.yaml
     set:
       inariOperator.enabled: true
+      keycloak.operatorAdminSecret.name: inari-operator-keycloak-client
     asserts:
       - hasDocuments:
           count: 1
@@ -20,6 +23,27 @@ tests:
       - equal:
           path: metadata.labels["app.kubernetes.io/component"]
           value: inari-operator
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_CLIENT_ID
+            value: inari-operator
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KEYCLOAK_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: inari-operator-keycloak-client
+                key: client-secret
+  - it: fails to render when enabled without an operator admin secret
+    template: inari-operator/deployment.yaml
+    set:
+      inariOperator.enabled: true
+      keycloak.operatorAdminSecret.name: ""
+    asserts:
+      - failedTemplate:
+          errorPattern: keycloak\.operatorAdminSecret\.name is required
   - it: renders a ServiceAccount when enabled
     template: inari-operator/serviceaccount.yaml
     set:

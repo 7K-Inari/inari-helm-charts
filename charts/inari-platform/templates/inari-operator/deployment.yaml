@@ -26,6 +26,13 @@ spec:
               value: http://keycloak-service:8080
             - name: INARI_KEYCLOAK_REALM
               value: inari
+            - name: KEYCLOAK_CLIENT_ID
+              value: {{ .Values.inariOperator.keycloakClientId | default "inari-operator" | quote }}
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "keycloak.operatorAdminSecret.name is required when inariOperator.enabled=true (the operator exits with 'missing keycloak client secret' without it)" .Values.keycloak.operatorAdminSecret.name }}
+                  key: {{ .Values.keycloak.operatorAdminSecret.clientSecretKey | default "client-secret" }}
           {{- with .Values.inariOperator.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
