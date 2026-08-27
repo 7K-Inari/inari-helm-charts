@@ -49,11 +49,12 @@ jobs:
             prev="$(git show "origin/main:${chart}/Chart.yaml" | awk '/^version:/{print $2}')"
             echo "== $name: previous=$prev"
             # install the previous released version from GHCR
-            # --skip-crds: operators + CRDs are pre-installed by
-            # install-operators.sh; older chart releases carried CRDs whose
-            # helm ownership would conflict.
+            # Operators + CRDs are pre-installed by install-operators.sh.
+            # --skip-crds covers crds/-dir releases; the --set flags cover
+            # releases whose CRDs were template-gated (default true).
             helm upgrade --install "$name-prev" "oci://ghcr.io/7k-inari/charts/$name" \
-              --version "$prev" --namespace "$name-test" --create-namespace --wait --timeout 5m --skip-crds || \
+              --version "$prev" --namespace "$name-test" --create-namespace --wait --timeout 5m --skip-crds \
+              --set postgresql.operator.enabled=false --set keycloak.crdsInstall=false || \
               echo "::warning::previous release $prev not installable (first release?) — installing PR chart directly"
             # upgrade to the PR chart
             helm dependency build "$chart"
