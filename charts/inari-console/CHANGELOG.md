@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-console-v0.2.4...inari-console-v0.3.0) (2026-08-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* the Keycloak operator no longer creates an Ingress; enable keycloak.route (or inariServer.route) with gateway.name set to an existing Gateway to expose the services.
+
+### Features
+
+* expose routes via Gateway API HTTPRoutes instead of Ingress ([#35](https://github.com/7K-Inari/inari-helm-charts/issues/35)) ([5e93e22](https://github.com/7K-Inari/inari-helm-charts/commit/5e93e22441572d5e6cd1c62ba0aab46d5ae45926))
+
 ## [0.2.4](https://github.com/7K-Inari/inari-helm-charts/compare/inari-console-v0.2.3...inari-console-v0.2.4) (2026-08-22)
 
 
