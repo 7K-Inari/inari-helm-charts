@@ -72,6 +72,7 @@ jobs:
             for a in $(kubectl -n argocd get applications -o jsonpath='{.items[*].metadata.name}'); do
               echo "=== application $a operationState ==="
               kubectl -n argocd get application "$a" -o jsonpath='{.status.operationState.message}{"\n"}{.status.sync.status}{"\n"}{.status.health.status}{"\n"}' || true
+              kubectl -n argocd get application "$a" -o jsonpath='{range .status.conditions[*]}{.type}: {.message}{"\n"}{end}' || true
             done
             kubectl get pods -A | grep -v -E "Running|Completed" || true
             kubectl -n cnpg-system get pods -o wide || true
