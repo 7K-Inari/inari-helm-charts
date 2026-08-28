@@ -22,6 +22,17 @@ gateway:
   sectionName: ""
 
 # ---------------------------------------------------------------------------
+# CRDs — optional vendored CRDs for first-party components. The chart never
+# installs operators; enable these only when the cluster does not already have
+# the CRDs.
+# ---------------------------------------------------------------------------
+crds:
+  # Install the inari-operator CRDs (platform.inari.io) as part of this release.
+  # Default: false; enable for day-0 clusters that do not yet have them.
+  inariOperator:
+    enabled: false
+
+# ---------------------------------------------------------------------------
 # PostgreSQL — CloudNativePG operator (subchart) + first-party Cluster CR.
 # The cluster name is fixed (default "postgresql") so sibling components can
 # rely on stable service names: <clusterName>-rw / <clusterName>-ro.
