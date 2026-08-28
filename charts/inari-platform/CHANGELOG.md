@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.9.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.8.0...inari-platform-v0.9.0) (2026-08-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* the Keycloak operator no longer creates an Ingress; enable keycloak.route (or inariServer.route) with gateway.name set to an existing Gateway to expose the services.
+
+### Features
+
+* expose routes via Gateway API HTTPRoutes instead of Ingress ([#35](https://github.com/7K-Inari/inari-helm-charts/issues/35)) ([5e93e22](https://github.com/7K-Inari/inari-helm-charts/commit/5e93e22441572d5e6cd1c62ba0aab46d5ae45926))
+* **keycloak:** configurable platform admin client role via keycloak.adminRole ([#33](https://github.com/7K-Inari/inari-helm-charts/issues/33)) ([8ec395a](https://github.com/7K-Inari/inari-helm-charts/commit/8ec395aa98763bc1a51c88032c47c984426c6964))
+* **keycloak:** service-account admin client instead of admin user/password ([#32](https://github.com/7K-Inari/inari-helm-charts/issues/32)) ([9bc44d3](https://github.com/7K-Inari/inari-helm-charts/commit/9bc44d3ea16d09d61bd0b39295908b9cbfafe5b3))
+* **keycloak:** verify admin API access in realm-verify hook job ([#34](https://github.com/7K-Inari/inari-helm-charts/issues/34)) ([3d6e9d9](https://github.com/7K-Inari/inari-helm-charts/commit/3d6e9d9b4b7e6d878db3c91d99c200e95b5b868f))
+
+
+### Bug Fixes
+
+* **inari-platform:** inject KEYCLOAK_CLIENT_SECRET into inari-operator Deployment ([#30](https://github.com/7K-Inari/inari-helm-charts/issues/30)) ([30640ae](https://github.com/7K-Inari/inari-helm-charts/commit/30640ae0e5fba1790acd276b1c5d6e2c59f773bd))
+
 ## [0.8.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.7.0...inari-platform-v0.8.0) (2026-08-27)
 
 
