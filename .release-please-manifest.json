@@ -1,4 +1,3 @@
 {
-  "charts/inari-platform": "0.9.0",
-  "charts/inari-console": "0.3.0"
+  "charts/platform-config": "0.1.0"
 }

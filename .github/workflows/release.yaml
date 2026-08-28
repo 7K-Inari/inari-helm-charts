@@ -11,7 +11,7 @@ on:
     # publish job previously failed after the release was already tagged.
     inputs:
       chart-path:
-        description: 'Chart path to (re)publish, e.g. charts/inari-platform'
+        description: 'Chart path to (re)publish, e.g. charts/platform-config'
         required: true
         type: string
 
