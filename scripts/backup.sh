@@ -77,7 +77,7 @@ fi
 log "writing manifest"
 jq -n \
   --arg ts "$TS" \
-  --arg chartVersion "$(helm -n "$NAMESPACE" list -f "^${RELEASE}$" -o json 2>/dev/null | jq -r '.[0].chart // "unknown"')" \
+  --arg chartVersion "$(kubectl get application platform-config -n argocd -o jsonpath='{.spec.source.path}/{.spec.source.targetRevision}' 2>/dev/null || echo gitops)" \
   --arg pgCluster "$PG_CLUSTER" \
   --argjson openfgaStores "$STORE_COUNT" \
   --argjson natsStreams "$STREAM_COUNT" \

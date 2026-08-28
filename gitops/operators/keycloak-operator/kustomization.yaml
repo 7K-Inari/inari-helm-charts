@@ -12,14 +12,13 @@ resources:
   - https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.3.2/kubernetes/kubernetes.yml
   - cluster-wide-rbac.yaml
 patches:
-  # The upstream operator Deployment carries no namespace — force it into
-  # 'keycloak'.
+  # The upstream operator Deployment carries no namespace (the kustomization
+  # `namespace:` field places it in 'keycloak').
   - patch: |-
       apiVersion: apps/v1
       kind: Deployment
       metadata:
         name: keycloak-operator
-        namespace: keycloak
       spec:
         template:
           spec:
