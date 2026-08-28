@@ -118,7 +118,7 @@ keycloak:
   # client-secret keys.
   # Client role on the inari-server client authorizing platform-admin API
   # endpoints. Created by the realm import; inari-server enforces it against
-  # resource_access["inari-server"].roles. Note: the realm import applies only
+  # resource_access["inari-server"].roles. Note: The realm import applies only
   # at realm creation — renaming on an existing realm requires realmSync or a
   # manual change in Keycloak.
   adminRole: inari-platform-admin
@@ -144,6 +144,8 @@ keycloak:
     enabled: false
     # e.g. ["auth.example.org"]; empty = match all hostnames.
     hostnames: []
+    # Extra annotations for the HTTPRoute (e.g. external-dns/cloudflare-proxy).
+    annotations: {}
 
 # ---------------------------------------------------------------------------
 # NATS — official chart, JetStream enabled (internal event bus).
@@ -202,6 +204,11 @@ inariServer:
     enabled: false
     # e.g. ["api.example.org"]; empty = match all hostnames.
     hostnames: []
+    # Optional path prefix match. When set, the route only matches requests
+    # whose path starts with this value (PathPrefix). Empty = match all paths.
+    pathPrefix: ""
+    # Extra annotations for the HTTPRoute (e.g. external-dns/cloudflare-proxy).
+    annotations: {}
   resources: {}
 
 inariOperator:
