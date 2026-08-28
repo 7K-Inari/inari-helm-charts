@@ -140,7 +140,7 @@ tests:
     template: keycloak/realmimport-inari.yaml
     asserts:
       - contains:
-          path: spec.realm.clients[?(@.clientId == "inari-server")].roles
+          path: spec.realm.roles.client.inari-server
           content:
             name: inari-platform-admin
             description: Inari platform administrator
@@ -150,7 +150,7 @@ tests:
       keycloak.adminRole: custom-admin
     asserts:
       - contains:
-          path: spec.realm.clients[?(@.clientId == "inari-server")].roles
+          path: spec.realm.roles.client.inari-server
           content:
             name: custom-admin
             description: Inari platform administrator
