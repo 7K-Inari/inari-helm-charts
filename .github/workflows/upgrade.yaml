@@ -49,7 +49,11 @@ jobs:
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           APP_VERSION=$(gh api repos/7K-Inari/inari-operator/contents/charts/inari-operator/Chart.yaml \
             --jq .content | base64 -d | awk '/^appVersion:/{gsub(/"/,"",$2); print $2}')
-          docker pull "ghcr.io/7k-inari/inari-operator:${APP_VERSION}"
+          # 0.0.6 was pushed only as :latest (semver-tag bug fixed in
+          # inari-operator#18); retag latest to the chart's appVersion.
+          docker pull "ghcr.io/7k-inari/inari-operator:latest"
+          docker tag "ghcr.io/7k-inari/inari-operator:latest" \
+            "ghcr.io/7k-inari/inari-operator:${APP_VERSION}"
           kind load docker-image "ghcr.io/7k-inari/inari-operator:${APP_VERSION}" --name chart-upgrade
 
       # The old umbrella assumes cluster-provided operators; this legacy
