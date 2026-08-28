@@ -63,6 +63,21 @@ tests:
           path: spec.rules[0].backendRefs[0].port
           value: 8080
 
+  - it: renders keycloak httproute annotations
+    template: keycloak/httproute.yaml
+    set:
+      gateway.name: main
+      keycloak.route:
+        enabled: true
+        annotations:
+          external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.annotations["external-dns.alpha.kubernetes.io/cloudflare-proxied"]
+          value: "true"
+
   - it: omits namespace, sectionName and hostnames when empty
     template: keycloak/httproute.yaml
     set:
@@ -119,6 +134,39 @@ tests:
       - equal:
           path: spec.rules[0].backendRefs[0].port
           value: 8080
+
+  - it: renders the inari-server httproute with pathPrefix and annotations
+    template: inari-server/httproute.yaml
+    release:
+      name: inari
+    set:
+      gateway.name: main
+      inariServer.enabled: true
+      inariServer.route:
+        enabled: true
+        hostnames:
+          - inari.example.org
+        pathPrefix: /api
+        annotations:
+          external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.annotations["external-dns.alpha.kubernetes.io/cloudflare-proxied"]
+          value: "true"
+      - equal:
+          path: spec.hostnames
+          value: ["inari.example.org"]
+      - equal:
+          path: spec.rules[0].matches[0].path.type
+          value: PathPrefix
+      - equal:
+          path: spec.rules[0].matches[0].path.value
+          value: /api
+      - matchRegex:
+          path: spec.rules[0].backendRefs[0].name
+          pattern: inari-platform-server$
 
   - it: renders only httproutes, no ingress or gateway resources
     template: keycloak/httproute.yaml

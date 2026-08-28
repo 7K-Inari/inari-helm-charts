@@ -53,3 +53,8 @@ route:
   enabled: false
   # e.g. ["console.example.org"]; empty = match all hostnames.
   hostnames: []
+  # Optional path prefix match. When set, the route only matches requests
+  # whose path starts with this value (PathPrefix). Empty = match all paths.
+  pathPrefix: ""
+  # Extra annotations for the HTTPRoute (e.g. external-dns/cloudflare-proxy).
+  annotations: {}
