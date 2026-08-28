@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Installs the cluster operators the inari-platform chart assumes:
+# LEGACY: imperative operator install used only by the umbrella-to-gitops
+# migration test (.github/workflows/upgrade.yaml). New installs get the
+# operators from ArgoCD Applications (gitops/operators/).
+#
+# Installs the cluster operators the old inari-platform umbrella assumed:
 # CloudNativePG (CNPG) and the Keycloak operator, incl. their CRDs.
 # The chart never installs operators itself — this script is the day-0
 # prerequisite step for clusters that don't have them yet. Idempotent.

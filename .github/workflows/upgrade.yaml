@@ -1,14 +1,23 @@
 name: upgrade
 
-# Install + upgrade drill on kind: installs the previous chart release, then
-# upgrades to the PR's chart. Catches upgrade-time breakage (schema, hooks,
-# CRDs, immutable fields) that a fresh-install check can't see.
+# Migration drill on kind: installs the last released inari-platform umbrella
+# chart (helm), seeds marker data, then migrates to the gitops-composed stack
+# (ArgoCD Applications from this PR) and asserts the stack is healthy and the
+# data survived.
+#
+# Path: the umbrella is installed with dataProtection.keepOnUninstall=true so
+# `helm uninstall` leaves the CNPG Cluster + PVCs in place (resource-policy:
+# keep). ArgoCD then adopts the surviving Cluster (apply semantics) while
+# platform-config recreates the db secrets (same dev passwords).
 
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  install-upgrade:
+  umbrella-to-gitops:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,10 +28,8 @@ jobs:
         with:
           version: v3.18.6
 
-      - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2.7.0
-        with:
-          version: v3.12.0
+      - name: Install GNU jq
+        run: sudo apt-get update -y && sudo apt-get install -y jq
 
       - name: Create kind cluster
         uses: helm/kind-action@v1.12.0
@@ -30,49 +37,55 @@ jobs:
           cluster_name: chart-upgrade
           wait: 60s
 
-      # The chart assumes cluster-provided operators; install them first.
+      # The old umbrella assumes cluster-provided operators; this legacy
+      # helper is retained solely for this migration test.
       - name: Install prerequisite operators
         run: ./scripts/install-operators.sh
 
-      - name: Install previous release, upgrade to PR chart
+      - name: Install the previous umbrella release
         run: |
-          set -euo pipefail
-          # ct.yaml has debug: true — filter out ct's '>>>' log lines so only
-          # real chart paths drive the loop.
-          CHANGED=$(ct list-changed --config ct.yaml | grep -E '^charts/[^ ]+$' || true)
-          if [ -z "$CHANGED" ]; then
-            echo "no charts changed — nothing to install/upgrade"
-            exit 0
-          fi
-          for chart in $CHANGED; do
-            name=$(basename "$chart")
-            prev="$(git show "origin/main:${chart}/Chart.yaml" | awk '/^version:/{print $2}')"
-            echo "== $name: previous=$prev"
-            # install the previous released version from GHCR
-            # Operators + CRDs are pre-installed by install-operators.sh.
-            # --skip-crds covers crds/-dir releases; the --set flags cover
-            # releases whose CRDs/operator were template-gated or unconditional
-            # (0.7.0 renders the keycloak operator + ClusterRole whenever
-            # keycloak.enabled=true, with no separate gate — disable keycloak
-            # entirely for the previous release; the upgrade to the PR chart
-            # re-enables it).
-            helm upgrade --install "$name-prev" "oci://ghcr.io/7k-inari/charts/$name" \
-              --version "$prev" --namespace "$name-test" --create-namespace --wait --timeout 5m --skip-crds \
-              --set postgresql.operator.enabled=false --set keycloak.crdsInstall=false --set keycloak.enabled=false || \
-              echo "::warning::previous release $prev not installable (first release?) — installing PR chart directly"
-            # upgrade to the PR chart
-            # --reset-values: helm upgrade merges the previous release's
-            # user-supplied values by default, which would carry the
-            # keycloak.enabled=false etc. overrides into the PR chart (its
-            # values schema then rejects the empty keycloak.external).
-            helm dependency build "$chart"
-            helm upgrade --install "$name-prev" "$chart" \
-              --namespace "$name-test" --create-namespace --wait --timeout 15m --skip-crds \
-              --reset-values
-            helm history "$name-prev" --namespace "$name-test"
-          done
+          helm upgrade --install inari oci://ghcr.io/7k-inari/charts/inari-platform \
+            --version 0.9.0 \
+            --namespace inari --create-namespace \
+            --wait --timeout 15m \
+            --set postgresql.storageSize=1Gi \
+            --set nats.config.jetstream.fileStore.pvc.size=1Gi \
+            --set keycloak.hostname.hostname=http://keycloak.local:8080 \
+            --set keycloak.resources.requests.cpu=100m \
+            --set keycloak.resources.requests.memory=256Mi \
+            --set dataProtection.keepOnUninstall=true
+
+      - name: Seed marker data
+        run: |
+          POD=$(kubectl -n inari get pod -l cnpg.io/cluster=postgresql,cnpg.io/instanceRole=primary -o jsonpath='{.items[0].metadata.name}')
+          kubectl -n inari exec -i "$POD" -c postgres -- \
+            psql -U postgres -d inari -c "CREATE TABLE migration_marker (id int PRIMARY KEY); INSERT INTO migration_marker VALUES (42);"
+
+      - name: Uninstall the umbrella (CNPG cluster survives via resource-policy=keep)
+        run: |
+          helm uninstall inari --namespace inari --wait
+          kubectl -n inari get cluster.postgresql.cnpg.io postgresql
+
+      - name: Bootstrap the gitops stack onto the same cluster
+        run: KIND_CLUSTER_NAME=chart-upgrade ./scripts/bootstrap.sh --skip-kind
+
+      - name: Assert marker data survived the migration
+        run: |
+          POD=$(kubectl -n inari get pod -l cnpg.io/cluster=postgresql,cnpg.io/instanceRole=primary -o jsonpath='{.items[0].metadata.name}')
+          GOT=$(kubectl -n inari exec -i "$POD" -c postgres -- \
+            psql -U postgres -d inari -Atc "SELECT id FROM migration_marker")
+          [ "$GOT" = "42" ] || { echo "marker data lost (got: '$GOT')"; exit 1; }
+
+      - name: Smoke check
+        run: |
+          kubectl -n inari rollout status deployment/openfga --timeout=300s
+          kubectl -n inari run smoke --rm -i --restart=Never \
+            --image=curlimages/curl:8.10.1 --quiet -- \
+            -fsS --retry 30 --retry-delay 5 --retry-all-errors \
+            http://keycloak-service:8080/realms/inari
 
       - name: Dump on failure
         if: failure()
         run: |
+          kubectl -n argocd get applications || true
           kubectl get pods -A | grep -v Running || true

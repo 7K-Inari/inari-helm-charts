@@ -42,7 +42,7 @@ store and NATS has no streams; the scripts warn and continue.
 
 - `kubectl` context pointing at the platform cluster; `jq`, `tar`, `helm` locally.
 - The `nats-box` deployment running in the namespace (enabled by default in
-  the umbrella chart) — all in-cluster HTTP/CLI work runs from it.
+  the composed stack) — all in-cluster HTTP/CLI work runs from it.
 - Admin password available in secret `inari-db` (chart-managed).
 
 ## Procedures
@@ -60,7 +60,7 @@ Verify the archive: `tar tzf backups/inari-backup-<ts>.tgz` and check
 
 ### Restore onto an existing stack
 
-The target must have the umbrella chart installed and healthy. Logical dumps
+The target must have the gitops stack (gitops/ Applications) installed and healthy. Logical dumps
 are idempotent (`--clean`), so restoring onto a used stack is supported.
 
 ```sh
