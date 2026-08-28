@@ -41,6 +41,11 @@ kind get clusters 2>/dev/null | grep -qx "$DR_CLUSTER" \
 kind create cluster --name "$DR_CLUSTER"
 kubectl config use-context "kind-${DR_CLUSTER}" >/dev/null
 
+# Private operator image can't be pulled anonymously from kind.
+if [[ -n "${GHCR_TOKEN:-}" ]]; then
+  "$SCRIPT_DIR/preload-operator-image.sh" "$DR_CLUSTER"
+fi
+
 log "bootstrapping the gitops stack on the DR cluster"
 "$SCRIPT_DIR/bootstrap.sh" --skip-kind
 
