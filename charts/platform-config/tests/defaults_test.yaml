@@ -1,0 +1,34 @@
+suite: chart defaults
+templates:
+  - postgres/cluster.yaml
+  - postgres/secrets.yaml
+  - keycloak/keycloak.yaml
+  - keycloak/realmimport-inari.yaml
+  - keycloak/admin-secret.yaml
+  - keycloak/realm-verify-job.yaml
+  - keycloak/client-setup-job.yaml
+tests:
+  - it: every rendered first-party resource carries standard labels
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/part-of"]
+          value: inari-platform
+      - exists:
+          path: metadata.labels["app.kubernetes.io/name"]
+
+  - it: no first-party resource is an Ingress (Gateway API HTTPRoutes only)
+    asserts:
+      - notEqual:
+          path: kind
+          value: Ingress
+      - notEqual:
+          path: kind
+          value: Gateway
+      - notEqual:
+          path: kind
+          value: GatewayClass
+
+  - it: no first-party resource uses helm hook annotations (ArgoCD hooks only)
+    asserts:
+      - notExists:
+          path: metadata.annotations["helm.sh/hook"]

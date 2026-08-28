@@ -1,0 +1,18 @@
+{{- if or .Values.keycloak.enabled .Values.keycloak.external.importInto.name }}
+apiVersion: k8s.keycloak.org/v2alpha1
+kind: KeycloakRealmImport
+metadata:
+  annotations:
+    "argocd.argoproj.io/sync-wave": "2"
+  name: inari-realm-inari
+  {{- if and (not .Values.keycloak.enabled) .Values.keycloak.external.importInto.namespace }}
+  # The realm import CR must live in the same namespace as the target Keycloak CR.
+  namespace: {{ .Values.keycloak.external.importInto.namespace }}
+  {{- end }}
+  labels:
+    {{- include "platform-config.componentLabels" (dict "root" . "component" "keycloak") | nindent 4 }}
+spec:
+  keycloakCRName: {{ .Values.keycloak.external.importInto.name | default "keycloak" }}
+  realm:
+    {{- tpl (.Files.Get "files/realm-inari.json") . | fromJson | toYaml | nindent 4 }}
+{{- end }}

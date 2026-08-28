@@ -1,0 +1,160 @@
+# Platform glue for the Inari GitOps stack.
+# Installs the CNPG PostgreSQL Cluster + database secrets and the Keycloak
+# instance (realm "inari" import/sync/verify via ArgoCD PostSync hooks).
+# Operators (CNPG, Keycloak), CRDs, NATS, OpenFGA and the first-party
+# components are separate ArgoCD Applications — see gitops/.
+
+global:
+  # Extra labels applied to every first-party resource.
+  labels: {}
+
+# ---------------------------------------------------------------------------
+# Gateway API — parentRef to an ALREADY-EXISTING Gateway. This chart never
+# creates a Gateway/GatewayClass and never installs a Gateway controller:
+# a Gateway (e.g. Envoy Gateway, Istio, Cilium) must be deployed beforehand.
+# All HTTPRoutes emitted by this chart attach to this Gateway.
+# ---------------------------------------------------------------------------
+gateway:
+  # Name of the existing Gateway. Required when any *.route.enabled=true.
+  name: ""
+  # Namespace of the Gateway. Empty = same namespace as this release.
+  namespace: ""
+  # Optional listener name on the Gateway to attach routes to.
+  sectionName: ""
+
+# ---------------------------------------------------------------------------
+# PostgreSQL — first-party CNPG Cluster CR (the CNPG operator is a separate
+# ArgoCD Application). The cluster name is fixed (default "postgresql") so
+# sibling components can rely on stable service names:
+# <clusterName>-rw / <clusterName>-ro.
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  clusterName: postgresql
+  instances: 1
+  storageSize: 10Gi
+  storageClass: ""
+  # superuser bootstrap secret created by templates/postgres/secrets.yaml
+  auth:
+    # When set, the chart does not create the inari-db secret; the named
+    # secret must exist (e.g. synced from Vault via ESO) and carry keys:
+    # inari-uri, openfga-uri, keycloak-username, keycloak-password.
+    existingSecret: ""
+    # Only used with existingSecret: names of the per-role kubernetes.io/
+    # basic-auth secrets (username+password keys) backing CNPG managed.roles.
+    # Defaults to inari-db-role-<role>.
+    roleSecrets:
+      keycloak: ""
+      openfga: ""
+    superuserPassword: inari-dev-superuser
+    passwords:
+      inari: inari-dev
+      keycloak: inari-dev
+      openfga: inari-dev
+
+# Escape hatch: skip the CNPG cluster and point everything at an external DB.
+# When postgresql.enabled=false, set these to your external endpoints.
+externalPostgres:
+  host: ""
+  port: 5432
+
+# ---------------------------------------------------------------------------
+# Keycloak — the Keycloak operator (separate ArgoCD Application) reconciles a
+# Keycloak CR against the CNPG cluster, plus a KeycloakRealmImport for realm
+# "inari". The operator exposes Keycloak as service "keycloak-service" on
+# port 8080.
+# ---------------------------------------------------------------------------
+keycloak:
+  enabled: true
+  instances: 1
+  # Pin Keycloak to a version matched with the operator. Setting
+  # keycloak.image also renders startOptimized: false on the Keycloak CR
+  # (the operator assumes custom images are already augmented).
+  image: quay.io/keycloak/keycloak:26.3.2
+  # Override the in-cluster/admin backchannel base URL. Empty = derived
+  # (bundled: http://keycloak-service:8080; external: keycloak.external.baseUrl).
+  baseUrl: ""
+  # Issuer hostname. Set hostname to a stable FQDN so tokens are issued with
+  # a fixed iss claim without patching the Keycloak CR by hand. Must be a
+  # plain hostname (keycloak.local) or a full URL (http://keycloak.local:8080)
+  # — Keycloak hostname v2 rejects bare host:port. Empty = Keycloak derives
+  # it per request.
+  hostname:
+    hostname: ""
+    strict: false
+  # Console (inari-ui client) OIDC redirect URIs / web origins. The realm
+  # import file is rendered through tpl, so these inject into the imported
+  # realm. Defaults keep local dev working; set the public console URL in
+  # real deployments.
+  consoleRedirectUris:
+    - "http://localhost:5173/*"
+  consoleWebOrigins:
+    - "http://localhost:5173"
+  # Reuse an existing Keycloak instance instead of deploying one
+  # (keycloak.enabled=false). importInto optionally renders the
+  # KeycloakRealmImport CR against an operator-managed instance.
+  external:
+    # in-cluster base URL for admin/backchannel calls
+    baseUrl: ""
+    # public issuer base (no /realms suffix), e.g. https://auth.7kgroup.org
+    issuerUrl: ""
+    adminSecret:
+      name: ""
+      clientIdKey: client-id
+      clientSecretKey: client-secret
+    importInto:
+      name: ""
+      namespace: ""
+  # Idempotent realm sync on every sync (keycloak-config-cli ArgoCD PostSync
+  # hook job). The KeycloakRealmImport applies only at realm creation;
+  # this keeps clients/scopes/mappers in line with the chart over time.
+  # Works for bundled and external instances.
+  realmSync:
+    enabled: false
+    image: adorsys/keycloak-config-cli:6.5.1-26
+  # Confidential client used by inari-server / inari-operator to call the
+  # Keycloak Admin REST API (client_credentials grant; no admin user/password
+  # anywhere). Rendered into the realm import; a PostSync hook job grants
+  # its service account the realm-management realm-admin role. For external
+  # instances (keycloak.enabled=false) create the client and role mapping
+  # yourself and point external.adminSecret at a secret with client-id /
+  # client-secret keys.
+  # Client role on the inari-server client authorizing platform-admin API
+  # endpoints. Created by the realm import; inari-server enforces it against
+  # resource_access["inari-server"].roles. Note: The realm import applies only
+  # at realm creation — renaming on an existing realm requires realmSync or a
+  # manual change in Keycloak.
+  adminRole: inari-platform-admin
+  #
+  # Verification: a PostSync hook Job (realm-verify, hook weight 8 — after
+  # client-setup and realm-sync) proves this auth path works before the
+  # ArgoCD Application is marked Healthy: it waits for the public realm
+  # endpoint, obtains a token via client_credentials from the same
+  # inari-keycloak-admin secret the server/operator use, and requires
+  # GET /admin/realms/inari to return 200, failing the sync otherwise.
+  # For external instances the same check runs against external.baseUrl.
+  adminClient:
+    clientId: inari-platform-admin
+    # dev default; override in real installs (secret stored in
+    # inari-keycloak-admin)
+    secret: inari-dev-admin-client
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+  # HTTPRoute exposing Keycloak via the Gateway referenced in `gateway:`.
+  route:
+    enabled: false
+    # e.g. ["auth.example.org"]; empty = match all hostnames.
+    hostnames: []
+    # Extra annotations for the HTTPRoute (e.g. external-dns/cloudflare-proxy).
+    annotations: {}
+
+# ---------------------------------------------------------------------------
+# Data protection — prune/uninstall safety for stateful resources.
+# ---------------------------------------------------------------------------
+dataProtection:
+  # Add argocd.argoproj.io/sync-options=Prune=false (and
+  # helm.sh/resource-policy=keep) to the CNPG Cluster: an ArgoCD prune or
+  # helm uninstall then leaves the database (and its PVCs) in place.
+  keepOnUninstall: false
