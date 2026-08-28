@@ -46,6 +46,35 @@ tests:
           path: spec.rules[0].backendRefs[0].port
           value: 80
 
+  - it: renders the console httproute with annotations and pathPrefix
+    set:
+      gateway.name: main
+      route:
+        enabled: true
+        hostnames:
+          - inari.example.org
+        pathPrefix: /
+        annotations:
+          external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.annotations["external-dns.alpha.kubernetes.io/cloudflare-proxied"]
+          value: "true"
+      - equal:
+          path: spec.hostnames
+          value: ["inari.example.org"]
+      - equal:
+          path: spec.rules[0].matches[0].path.type
+          value: PathPrefix
+      - equal:
+          path: spec.rules[0].matches[0].path.value
+          value: /
+      - equal:
+          path: spec.rules[0].backendRefs[0].name
+          value: inari-console
+
   - it: omits namespace, sectionName and hostnames when empty
     set:
       gateway.name: main
