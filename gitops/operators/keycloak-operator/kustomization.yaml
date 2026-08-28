@@ -1,0 +1,32 @@
+# Keycloak operator, cluster-wide (replaces scripts/install-operators.sh).
+# Upstream ships only namespace-scoped manifests; the kustomize patches below
+# widen the operator to watch all namespaces (mirroring upstream's
+# cluster-wide kustomization that only exists for >= 26.7).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: keycloak
+resources:
+  - namespace.yaml
+  - https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.3.2/kubernetes/keycloaks.k8s.keycloak.org-v1.yml
+  - https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.3.2/kubernetes/keycloakrealmimports.k8s.keycloak.org-v1.yml
+  - https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/26.3.2/kubernetes/kubernetes.yml
+  - cluster-wide-rbac.yaml
+patches:
+  # The upstream operator Deployment carries no namespace — force it into
+  # 'keycloak'.
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: keycloak-operator
+        namespace: keycloak
+      spec:
+        template:
+          spec:
+            containers:
+              - name: keycloak-operator
+                env:
+                  - name: QUARKUS_OPERATOR_SDK_CONTROLLERS_KEYCLOAKREALMIMPORTCONTROLLER_NAMESPACES
+                    value: JOSDK_ALL_NAMESPACES
+                  - name: QUARKUS_OPERATOR_SDK_CONTROLLERS_KEYCLOAKCONTROLLER_NAMESPACES
+                    value: JOSDK_ALL_NAMESPACES

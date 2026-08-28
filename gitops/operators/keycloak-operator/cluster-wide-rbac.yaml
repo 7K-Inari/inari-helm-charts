@@ -1,0 +1,61 @@
+# Cluster-wide watch permissions for the namespace-scoped upstream install:
+# ClusterRoleBindings for the two controller ClusterRoles, plus the
+# pod/configmap permissions the namespaced Role only grants locally.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: keycloak-operator-cluster-wide
+  labels:
+    app.kubernetes.io/name: keycloak-operator
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keycloakrealmimportcontroller-cluster-role-binding
+  labels:
+    app.kubernetes.io/name: keycloak-operator
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: keycloakrealmimportcontroller-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: keycloak-operator
+    namespace: keycloak
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keycloakcontroller-cluster-role-binding
+  labels:
+    app.kubernetes.io/name: keycloak-operator
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: keycloakcontroller-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: keycloak-operator
+    namespace: keycloak
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keycloak-operator-cluster-wide-binding
+  labels:
+    app.kubernetes.io/name: keycloak-operator
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: keycloak-operator-cluster-wide
+subjects:
+  - kind: ServiceAccount
+    name: keycloak-operator
+    namespace: keycloak

@@ -1,0 +1,38 @@
+# Platform glue: CNPG Cluster, db secrets, Keycloak instance + realm glue.
+# Sourced from this repo (helm chart at charts/platform-config) so e2e always
+# tests the working tree; switch to the OCI source below for real installs.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-config
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: inari
+  source:
+    repoURL: https://github.com/7K-Inari/inari-helm-charts.git
+    targetRevision: HEAD
+    path: charts/platform-config
+    helm:
+      releaseName: platform-config
+      # Mirrors charts/platform-config/values-dev.yaml (kind overrides).
+      values: |
+        postgresql:
+          instances: 1
+          storageSize: 1Gi
+        keycloak:
+          hostname:
+            hostname: http://keycloak.local:8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: inari
+  syncPolicy:
+    automated:
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

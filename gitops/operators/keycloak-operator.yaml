@@ -1,0 +1,20 @@
+# Keycloak operator via the kustomize overlay in this repo.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: keycloak-operator
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: inari
+  source:
+    repoURL: https://github.com/7K-Inari/inari-helm-charts.git
+    targetRevision: HEAD
+    path: gitops/operators/keycloak-operator
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: keycloak
+  syncPolicy:
+    automated:
+      selfHeal: true
