@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/7K-Inari/inari-helm-charts/compare/platform-config-v0.2.0...platform-config-v0.2.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **release:** align platform-config Chart.yaml to v0.2.0 and use helm release-type ([4426bf6](https://github.com/7K-Inari/inari-helm-charts/commit/4426bf69e5a6b1f7f0bcac6984b951741cf4a07c))
+
 ## [0.2.0](https://github.com/7K-Inari/inari-helm-charts/compare/platform-config-v0.1.0...platform-config-v0.2.0) (2026-08-28)
 
 
