@@ -65,7 +65,8 @@ wait_app() { # name
       log "Application/$1 Healthy+Synced"
       return 0
     fi
-    [[ "$health" == "Degraded" ]] && return 1
+    # Degraded/Progressing are common mid-rollout; keep waiting until the
+    # deadline instead of bailing on a transient state.
     sleep 5
   done
   return 1

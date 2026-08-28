@@ -10,7 +10,7 @@ metadata:
 spec:
   project: inari
   source:
-    repoURL: oci://ghcr.io/7k-inari/charts
+    repoURL: ghcr.io/7k-inari/charts
     chart: inari-console
     targetRevision: 0.3.0
     helm:

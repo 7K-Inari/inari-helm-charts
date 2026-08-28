@@ -7,7 +7,7 @@ metadata:
 spec:
   description: Inari platform (GitOps-composed control plane)
   sourceRepos:
-    - "oci://ghcr.io/7k-inari/charts"
+    - "ghcr.io/7k-inari/charts"
     - "https://cloudnative-pg.github.io/charts"
     - "https://nats-io.github.io/k8s/helm/charts/"
     - "https://openfga.github.io/helm-charts"

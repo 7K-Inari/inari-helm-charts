@@ -9,7 +9,7 @@ metadata:
 spec:
   project: inari
   source:
-    repoURL: oci://ghcr.io/7k-inari/charts
+    repoURL: ghcr.io/7k-inari/charts
     chart: inari-operator
     targetRevision: 0.1.0
     helm:

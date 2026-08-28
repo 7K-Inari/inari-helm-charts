@@ -37,7 +37,7 @@ metadata:
 stringData:
   type: helm
   name: inari-charts
-  url: oci://ghcr.io/7k-inari/charts
+  url: ghcr.io/7k-inari/charts
   enableOCI: "true"
   username: ${GHCR_USERNAME:-github}
   password: ${GHCR_TOKEN}
