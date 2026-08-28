@@ -69,6 +69,9 @@ jobs:
         run: |
           if ! KIND_CLUSTER_NAME=chart-testing ./scripts/bootstrap.sh --skip-kind; then
             kubectl -n argocd get applications || true
+            kubectl get pods -A | grep -v -E "Running|Completed" || true
+            kubectl -n cnpg-system get pods -o wide || true
+            kubectl -n cnpg-system describe pods | tail -60 || true
             kubectl -n inari get pods -o wide || true
             kubectl -n inari get cluster.postgresql.cnpg.io || true
             kubectl -n inari get jobs || true
