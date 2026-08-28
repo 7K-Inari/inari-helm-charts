@@ -39,6 +39,14 @@ kubectl apply -f "$GITOPS_DIR/operators"
 kubectl apply -f "$GITOPS_DIR/platform"
 kubectl apply -f "$GITOPS_DIR/apps"
 
+# CI/e2e: pin git-sourced Applications at the branch under test. HEAD would
+# resolve to the default branch, which may not yet contain this chart.
+if [[ -n "${GITOPS_TARGET_REVISION:-}" ]]; then
+  log "pinning platform-config Application to targetRevision=$GITOPS_TARGET_REVISION"
+  kubectl -n argocd patch application platform-config --type merge \
+    -p "{\"spec\":{\"source\":{\"targetRevision\":\"$GITOPS_TARGET_REVISION\"}}}"
+fi
+
 # Wait for the core stack. inari-server / inari-console are optional until
 # their charts are published by the component repos (the old umbrella
 # shipped them as disabled stubs).

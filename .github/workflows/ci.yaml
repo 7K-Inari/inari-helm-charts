@@ -64,6 +64,8 @@ jobs:
         uses: helm/kind-action@v1.12.0
 
       - name: Bootstrap platform stack (ArgoCD + gitops apps)
+        env:
+          GITOPS_TARGET_REVISION: ${{ github.head_ref || github.ref_name }}
         run: |
           if ! KIND_CLUSTER_NAME=chart-testing ./scripts/bootstrap.sh --skip-kind; then
             kubectl -n argocd get applications || true
@@ -107,6 +109,8 @@ jobs:
         uses: helm/kind-action@v1.12.0
 
       - name: Bootstrap platform stack
+        env:
+          GITOPS_TARGET_REVISION: ${{ github.head_ref || github.ref_name }}
         run: KIND_CLUSTER_NAME=chart-testing ./scripts/bootstrap.sh --skip-kind
 
       - name: Backup

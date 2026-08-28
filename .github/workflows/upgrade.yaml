@@ -67,6 +67,8 @@ jobs:
           kubectl -n inari get cluster.postgresql.cnpg.io postgresql
 
       - name: Bootstrap the gitops stack onto the same cluster
+        env:
+          GITOPS_TARGET_REVISION: ${{ github.head_ref || github.ref_name }}
         run: KIND_CLUSTER_NAME=chart-upgrade ./scripts/bootstrap.sh --skip-kind
 
       - name: Assert marker data survived the migration
