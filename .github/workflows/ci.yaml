@@ -65,6 +65,19 @@ jobs:
       - name: Create kind cluster
         uses: helm/kind-action@v1.12.0
 
+      # The operator image package is private; anonymous pulls in kind fail.
+      # Pre-pull with GITHUB_TOKEN and side-load it (pullPolicy IfNotPresent).
+      - name: Preload private operator image into kind
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          APP_VERSION=$(gh api repos/7K-Inari/inari-operator/contents/charts/inari-operator/Chart.yaml \
+            --jq .content | base64 -d | awk '/^appVersion:/{gsub(/"/,"",$2); print $2}')
+          docker pull "ghcr.io/7k-inari/inari-operator:${APP_VERSION}"
+          kind load docker-image "ghcr.io/7k-inari/inari-operator:${APP_VERSION}" --name chart-testing
+
       - name: Bootstrap platform stack (ArgoCD + gitops apps)
         env:
           GITOPS_TARGET_REVISION: ${{ github.head_ref || github.ref_name }}
@@ -120,6 +133,17 @@ jobs:
 
       - name: Create kind cluster and bootstrap
         uses: helm/kind-action@v1.12.0
+
+      - name: Preload private operator image into kind
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          APP_VERSION=$(gh api repos/7K-Inari/inari-operator/contents/charts/inari-operator/Chart.yaml \
+            --jq .content | base64 -d | awk '/^appVersion:/{gsub(/"/,"",$2); print $2}')
+          docker pull "ghcr.io/7k-inari/inari-operator:${APP_VERSION}"
+          kind load docker-image "ghcr.io/7k-inari/inari-operator:${APP_VERSION}" --name chart-testing
 
       - name: Bootstrap platform stack
         env:
