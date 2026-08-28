@@ -11,7 +11,7 @@ spec:
   source:
     repoURL: ghcr.io/7k-inari/charts
     chart: inari-operator
-    targetRevision: 0.1.0
+    targetRevision: 0.1.1
     helm:
       releaseName: inari-operator
   destination:
