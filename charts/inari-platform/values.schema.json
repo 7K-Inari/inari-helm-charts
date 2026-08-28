@@ -79,6 +79,13 @@
               "items": {
                 "type": "string"
               }
+            },
+            "annotations": {
+              "type": "object",
+              "description": "Extra annotations added to the HTTPRoute.",
+              "additionalProperties": {
+                "type": "string"
+              }
             }
           }
         },
@@ -170,6 +177,17 @@
             "hostnames": {
               "type": "array",
               "items": {
+                "type": "string"
+              }
+            },
+            "pathPrefix": {
+              "type": "string",
+              "description": "Optional PathPrefix match for the route. Empty = match all paths."
+            },
+            "annotations": {
+              "type": "object",
+              "description": "Extra annotations added to the HTTPRoute.",
+              "additionalProperties": {
                 "type": "string"
               }
             }
