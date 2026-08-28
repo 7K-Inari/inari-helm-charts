@@ -19,7 +19,8 @@ require() {
 KIND_CLUSTER_NAME="${KIND_CLUSTER_NAME:-inari-platform}"
 NAMESPACE="${NAMESPACE:-inari}"
 RELEASE="${RELEASE:-inari}"
-CHART_DIR="${CHART_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../charts/inari-platform" && pwd)}"
+CHART_DIR="${CHART_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../charts/platform-config" && pwd)}"
+GITOPS_DIR="${GITOPS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../gitops" && pwd)}"
 PG_CLUSTER="${PG_CLUSTER:-postgresql}"
 
 kubectl_ns() { kubectl --namespace "$NAMESPACE" "$@"; }

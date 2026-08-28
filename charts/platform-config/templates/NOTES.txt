@@ -1,0 +1,53 @@
+Inari platform glue installed (CNPG PostgreSQL, Keycloak realm "inari").
+
+Prerequisite (never installed by this chart): the CNPG operator and the
+Keycloak operator (incl. CRDs) must already exist in the cluster — in the
+GitOps layout they are separate ArgoCD Applications (see gitops/).
+
+Exposure is Gateway API only: this chart never creates Ingress, Gateway or
+GatewayClass resources. Enable keycloak.route and set gateway.name to point
+the rendered HTTPRoute at a Gateway you have already deployed (a Gateway
+controller must be installed in the cluster).
+
+{{- if .Values.keycloak.route.enabled }}
+HTTPRoute attached to Gateway {{ required "gateway.name is required when a route is enabled" .Values.gateway.name }}{{ with .Values.gateway.namespace }} (namespace {{ . }}){{ end }}:
+  keycloak:      {{ .Values.keycloak.route.hostnames | default (list "*") | join ", " }}
+{{- end }}
+
+Components:
+  PostgreSQL (CNPG):  {{ include "platform-config.postgresHost" . }} (cluster: {{ .Values.postgresql.clusterName }})
+  {{- if .Values.keycloak.enabled }}
+  Keycloak:           http://keycloak-service:8080  (bundled; realm "inari", admin console at /admin)
+  {{- else }}
+  Keycloak:           EXTERNAL — {{ .Values.keycloak.external.baseUrl }}
+  {{- end }}
+
+NATS, OpenFGA, inari-operator, inari-server and inari-console are separate
+ArgoCD Applications composed on top of this chart (see gitops/).
+
+{{- if not .Values.keycloak.enabled }}
+External Keycloak notes:
+  - The realm "inari" must exist on the external instance.
+    {{- if .Values.keycloak.external.importInto.name }}
+    Realm import CR rendered into namespace {{ .Values.keycloak.external.importInto.namespace }} (operator-managed instance {{ .Values.keycloak.external.importInto.name }}).
+    {{- end }}
+    {{- if .Values.keycloak.realmSync.enabled }}
+    Realm sync job applies clients/scopes/mappers idempotently on every sync.
+    {{- else }}
+    ⚠ keycloak.realmSync.enabled=false — realm changes in future chart upgrades will NOT propagate.
+    Consider enabling it (keycloak.realmSync.enabled=true).
+    {{- end }}
+{{- end }}
+
+{{- if .Values.keycloak.realmSync.enabled }}
+Realm sync: keycloak-config-cli PostSync hook job runs on every sync —
+realm changes in the chart propagate to the live realm.
+{{- end }}
+
+{{- if not .Values.dataProtection.keepOnUninstall }}
+⚠ dataProtection.keepOnUninstall=false — an ArgoCD prune (or helm uninstall)
+  DELETES the CNPG cluster and its PVCs. Enable it for any environment with
+  data you care about.
+{{- end }}
+
+Backup/restore & DR drill: see docs/backup-restore.md (make backup/restore/dr-drill).

@@ -5,20 +5,12 @@
   "include-v-in-tag": false,
   "tag-separator": "-v",
   "packages": {
-    "charts/inari-platform": {
+    "charts/platform-config": {
       "release-type": "simple",
-      "component": "inari-platform",
+      "component": "platform-config",
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
-        "Chart.yaml"
-      ]
-    },
-    "charts/inari-console": {
-      "release-type": "simple",
-      "component": "inari-console",
-      "changelog-path": "CHANGELOG.md",
-      "extra-files": [
-        "Chart.yaml"
+        "charts/platform-config/Chart.yaml"
       ]
     }
   }

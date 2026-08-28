@@ -1,0 +1,34 @@
+{{- if and .Values.keycloak.enabled .Values.keycloak.route.enabled }}
+{{- $gateway := .Values.gateway }}
+{{- if not $gateway.name }}
+{{- fail "gateway.name is required when a route is enabled — the chart does not create a Gateway; point gateway.name at the Gateway you have already deployed" }}
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: keycloak
+  annotations:
+    "argocd.argoproj.io/sync-wave": "2"
+    {{- with .Values.keycloak.route.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  labels:
+    {{- include "platform-config.componentLabels" (dict "root" . "component" "keycloak") | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ $gateway.name }}
+      {{- with $gateway.namespace }}
+      namespace: {{ . }}
+      {{- end }}
+      {{- with $gateway.sectionName }}
+      sectionName: {{ . }}
+      {{- end }}
+  {{- with .Values.keycloak.route.hostnames }}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - backendRefs:
+        - name: keycloak-service
+          port: 8080
+{{- end }}

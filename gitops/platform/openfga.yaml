@@ -1,0 +1,39 @@
+# OpenFGA — postgres datastore on the CNPG cluster (secret inari-db created
+# by platform-config, sync wave 0). Values mirror the old umbrella openfga:
+# subchart section.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: openfga
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: inari
+  source:
+    repoURL: https://openfga.github.io/helm-charts
+    chart: openfga
+    targetRevision: 0.2.27
+    helm:
+      releaseName: openfga
+      values: |
+        fullnameOverride: openfga
+        replicaCount: 1
+        datastore:
+          engine: postgres
+          existingSecret: inari-db
+          secretKeys:
+            uriKey: openfga-uri
+          # run migrations as an init container instead of a Job + wait-for
+          # init container — fewer moving parts, no jobs RBAC needed
+          migrationType: initContainer
+        playground:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: inari
+  syncPolicy:
+    automated:
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

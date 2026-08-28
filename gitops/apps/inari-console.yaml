@@ -1,0 +1,29 @@
+# inari-console — OCI chart (last published from this repo as 0.3.0; future
+# releases come from the inari-ui repo after the chart move task).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: inari-console
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: inari
+  source:
+    repoURL: ghcr.io/7k-inari/charts
+    chart: inari-console
+    targetRevision: 0.3.0
+    helm:
+      releaseName: inari-console
+      values: |
+        keycloakUrl: http://keycloak.local:8080
+        keycloakRealm: inari
+        keycloakClientId: inari-ui
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: inari
+  syncPolicy:
+    automated:
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

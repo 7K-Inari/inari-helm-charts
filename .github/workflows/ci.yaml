@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: read
+  # ArgoCD pulls the inari-* OCI charts from ghcr.io during bootstrap.
+  packages: read
 
 jobs:
   lint-test:
@@ -18,6 +20,8 @@ jobs:
       - uses: azure/setup-helm@v4
         with:
           version: v3.18.6
+
+      - uses: azure/setup-kubectl@v4
 
       - name: Set up chart-testing
         uses: helm/chart-testing-action@v2.7.0
@@ -33,17 +37,24 @@ jobs:
           shellcheck -S warning scripts/*.sh scripts/lib/*.sh
           bash -n scripts/*.sh scripts/lib/*.sh
 
-      - name: Build dependencies
-        run: helm dependency build charts/inari-platform
-
       - name: helm lint
-        run: helm lint charts/inari-platform && helm lint charts/inari-console
+        run: helm lint charts/platform-config
 
       - name: helm unittest
-        run: helm unittest charts/inari-platform charts/inari-console
+        run: helm unittest charts/platform-config
 
       - name: chart-testing lint
         run: ct lint --config ct.yaml
+
+      - name: Validate gitops manifests
+        run: |
+          # kustomize overlay must build (pulls the upstream keycloak-operator
+          # manifests and applies the cluster-wide patch)
+          kubectl kustomize gitops/operators/keycloak-operator > /dev/null
+          # every Application points at a declared sync wave
+          for f in gitops/operators/*.yaml gitops/platform/*.yaml gitops/apps/*.yaml; do
+            grep -q 'argocd.argoproj.io/sync-wave' "$f" || { echo "$f: missing sync-wave annotation"; exit 1; }
+          done
 
   install-test:
     runs-on: ubuntu-latest
@@ -51,28 +62,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: azure/setup-helm@v4
-        with:
-          version: v3.18.6
-
       - name: Create kind cluster
         uses: helm/kind-action@v1.12.0
 
-      # The chart assumes cluster-provided operators; install them first.
-      - name: Install prerequisite operators
-        run: ./scripts/install-operators.sh
+      # The operator image package is private; anonymous pulls in kind fail.
+      # Pre-pull with GITHUB_TOKEN and side-load it (pullPolicy IfNotPresent).
+      - name: Preload private operator image into kind
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/preload-operator-image.sh chart-testing
 
-      - name: Install chart and wait for readiness
+      - name: Bootstrap platform stack (ArgoCD + gitops apps)
+        env:
+          GITOPS_TARGET_REVISION: ${{ github.head_ref || github.ref_name }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          helm dependency build charts/inari-platform
-          if ! helm upgrade --install inari charts/inari-platform \
-            --namespace inari --create-namespace \
-            --values charts/inari-platform/values-dev.yaml \
-            --wait --timeout 15m; then
-            kubectl -n inari get pods -o wide
+          if ! KIND_CLUSTER_NAME=chart-testing ./scripts/bootstrap.sh --skip-kind; then
+            kubectl -n argocd get applications || true
+            for a in $(kubectl -n argocd get applications -o jsonpath='{.items[*].metadata.name}'); do
+              echo "=== application $a operationState ==="
+              kubectl -n argocd get application "$a" -o jsonpath='{.status.operationState.message}{"\n"}{.status.sync.status}{"\n"}{.status.health.status}{"\n"}' || true
+              kubectl -n argocd get application "$a" -o jsonpath='{range .status.conditions[*]}{.type}: {.message}{"\n"}{end}' || true
+              kubectl -n argocd get application "$a" -o jsonpath='{range .status.resources[?(@.status!="Synced")]}{.kind}/{.name}: {.status} {.health.status}{"\n"}{end}' || true
+            done
+            kubectl get pods -A | grep -v -E "Running|Completed" || true
+            kubectl -n cnpg-system get pods -o wide || true
+            kubectl -n cnpg-system logs -l app.kubernetes.io/instance=cnpg --all-containers --tail=50 || true
+            kubectl -n cnpg-system describe pods | tail -60 || true
+            kubectl -n inari get pods -o wide || true
             kubectl -n inari get cluster.postgresql.cnpg.io || true
-            kubectl -n inari get jobs
-            for p in $(kubectl -n inari get pods -o jsonpath='{.items[*].metadata.name}'); do
+            kubectl -n inari get jobs || true
+            for p in $(kubectl -n inari get pods -o jsonpath='{.items[*].metadata.name}' 2>/dev/null); do
               echo "=== describe $p ==="; kubectl -n inari describe pod "$p" | tail -30
               echo "=== logs $p ==="; kubectl -n inari logs "$p" --all-containers --tail=50 || true
             done
@@ -88,15 +110,19 @@ jobs:
             -fsS --retry 30 --retry-delay 5 --retry-all-errors \
             http://keycloak-service:8080/realms/inari
 
+      - name: Re-sync idempotency check (PostSync hooks must be rerunnable)
+        run: |
+          kubectl -n argocd patch application platform-config \
+            --type merge -p '{"operation":{"sync":{}}}'
+          sleep 10
+          kubectl -n argocd wait application/platform-config \
+            --for=jsonpath='{.status.health.status}'=Healthy --timeout=600s
+
   backup-restore-test:
     runs-on: ubuntu-latest
     needs: install-test
     steps:
       - uses: actions/checkout@v4
-
-      - uses: azure/setup-helm@v4
-        with:
-          version: v3.18.6
 
       - name: Install GNU jq
         run: sudo apt-get update -y && sudo apt-get install -y jq
@@ -104,13 +130,27 @@ jobs:
       - name: Create kind cluster and bootstrap
         uses: helm/kind-action@v1.12.0
 
+      - name: Preload private operator image into kind
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/preload-operator-image.sh chart-testing
+
       - name: Bootstrap platform stack
+        env:
+          GITOPS_TARGET_REVISION: ${{ github.head_ref || github.ref_name }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: KIND_CLUSTER_NAME=chart-testing ./scripts/bootstrap.sh --skip-kind
 
       - name: Backup
         run: scripts/backup.sh "$RUNNER_TEMP/backups"
 
       - name: DR drill (restore + verify on a fresh kind cluster)
+        env:
+          GITOPS_TARGET_REVISION: ${{ github.head_ref || github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ! scripts/dr-drill.sh "$RUNNER_TEMP"/backups/inari-backup-*.tgz; then
             kubectl -n inari get pods -o wide

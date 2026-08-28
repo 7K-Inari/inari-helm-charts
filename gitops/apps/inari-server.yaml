@@ -1,0 +1,26 @@
+# inari-server — OCI chart released from the inari-server repo (chart move
+# handled by a separate task; until published this Application stays
+# OutOfSync/Degraded and bootstrap treats it as optional).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: inari-server
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  project: inari
+  source:
+    repoURL: ghcr.io/7k-inari/charts
+    chart: inari-server
+    targetRevision: 0.1.0
+    helm:
+      releaseName: inari-server
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: inari
+  syncPolicy:
+    automated:
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
