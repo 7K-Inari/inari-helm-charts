@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.9.0...inari-platform-v0.10.0) (2026-08-28)
+
+
+### Features
+
+* HTTPRoute annotations and pathPrefix support ([#36](https://github.com/7K-Inari/inari-helm-charts/issues/36)) ([f668a0b](https://github.com/7K-Inari/inari-helm-charts/commit/f668a0b08049a66b75f086f926211c45478f004b))
+
 ## [0.9.0](https://github.com/7K-Inari/inari-helm-charts/compare/inari-platform-v0.8.0...inari-platform-v0.9.0) (2026-08-27)
 
 
