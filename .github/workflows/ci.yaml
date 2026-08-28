@@ -69,6 +69,10 @@ jobs:
         run: |
           if ! KIND_CLUSTER_NAME=chart-testing ./scripts/bootstrap.sh --skip-kind; then
             kubectl -n argocd get applications || true
+            for a in $(kubectl -n argocd get applications -o jsonpath='{.items[*].metadata.name}'); do
+              echo "=== application $a operationState ==="
+              kubectl -n argocd get application "$a" -o jsonpath='{.status.operationState.message}{"\n"}{.status.sync.status}{"\n"}{.status.health.status}{"\n"}' || true
+            done
             kubectl get pods -A | grep -v -E "Running|Completed" || true
             kubectl -n cnpg-system get pods -o wide || true
             kubectl -n cnpg-system logs -l app.kubernetes.io/instance=cnpg --all-containers --tail=50 || true
