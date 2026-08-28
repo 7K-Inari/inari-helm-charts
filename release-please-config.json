@@ -6,12 +6,9 @@
   "tag-separator": "-v",
   "packages": {
     "charts/platform-config": {
-      "release-type": "simple",
+      "release-type": "helm",
       "component": "platform-config",
-      "changelog-path": "CHANGELOG.md",
-      "extra-files": [
-        "charts/platform-config/Chart.yaml"
-      ]
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }
