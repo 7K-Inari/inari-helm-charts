@@ -21,4 +21,26 @@ fi
 log "waiting for argocd-server"
 kubectl -n argocd rollout status deployment/argocd-server --timeout=300s
 kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=300s
+
+# Optional: registry credentials for the OCI charts consumed from
+# oci://ghcr.io/7k-inari/charts (private packages need auth in CI).
+if [[ -n "${GHCR_TOKEN:-}" ]]; then
+  log "configuring ArgoCD repo credentials for ghcr.io OCI charts"
+  kubectl -n argocd apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ghcr-oci-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: helm
+  name: inari-charts
+  url: oci://ghcr.io/7k-inari/charts
+  enableOCI: "true"
+  username: ${GHCR_USERNAME:-github}
+  password: ${GHCR_TOKEN}
+EOF
+fi
 log "ArgoCD ready"

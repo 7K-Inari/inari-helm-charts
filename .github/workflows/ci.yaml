@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: read
+  # ArgoCD pulls the inari-* OCI charts from ghcr.io during bootstrap.
+  packages: read
 
 jobs:
   lint-test:
@@ -66,6 +68,8 @@ jobs:
       - name: Bootstrap platform stack (ArgoCD + gitops apps)
         env:
           GITOPS_TARGET_REVISION: ${{ github.head_ref || github.ref_name }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ! KIND_CLUSTER_NAME=chart-testing ./scripts/bootstrap.sh --skip-kind; then
             kubectl -n argocd get applications || true
@@ -120,6 +124,8 @@ jobs:
       - name: Bootstrap platform stack
         env:
           GITOPS_TARGET_REVISION: ${{ github.head_ref || github.ref_name }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: KIND_CLUSTER_NAME=chart-testing ./scripts/bootstrap.sh --skip-kind
 
       - name: Backup

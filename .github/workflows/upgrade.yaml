@@ -15,6 +15,8 @@ on:
 
 permissions:
   contents: read
+  # ArgoCD pulls the inari-* OCI charts from ghcr.io during bootstrap.
+  packages: read
 
 jobs:
   umbrella-to-gitops:
@@ -69,6 +71,8 @@ jobs:
       - name: Bootstrap the gitops stack onto the same cluster
         env:
           GITOPS_TARGET_REVISION: ${{ github.head_ref || github.ref_name }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: KIND_CLUSTER_NAME=chart-upgrade ./scripts/bootstrap.sh --skip-kind
 
       - name: Assert marker data survived the migration

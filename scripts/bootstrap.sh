@@ -57,7 +57,7 @@ OPTIONAL_APPS=(inari-server inari-console)
 
 wait_app() { # name
   log "waiting for Application/$1 to become Healthy"
-  local deadline=$((SECONDS + 600)) health="" sync=""
+  local deadline=$((SECONDS + 900)) health="" sync=""
   while (( SECONDS < deadline )); do
     health=$(kubectl -n argocd get application "$1" -o jsonpath='{.status.health.status}' 2>/dev/null || true)
     sync=$(kubectl -n argocd get application "$1" -o jsonpath='{.status.sync.status}' 2>/dev/null || true)
