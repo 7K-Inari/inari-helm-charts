@@ -43,6 +43,11 @@ jobs:
       - name: helm unittest
         run: helm unittest charts/platform-config
 
+      - name: Global image values render check
+        # Fails if any rendered image ignores global.imageRegistry or any
+        # workload pod spec ignores global.imagePullSecrets (plan §4.2).
+        run: scripts/check-global-image-values.sh charts/platform-config --set keycloak.realmSync.enabled=true
+
       - name: chart-testing lint
         run: ct lint --config ct.yaml
 

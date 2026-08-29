@@ -46,7 +46,7 @@ tests:
   - it: allows overriding the keycloak image
     template: keycloak/keycloak.yaml
     set:
-      keycloak.image: quay.io/keycloak/keycloak:99.0.0
+      keycloak.image.tag: "99.0.0"
     asserts:
       - equal:
           path: spec.image

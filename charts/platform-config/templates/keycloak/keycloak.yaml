@@ -10,10 +10,20 @@ metadata:
 spec:
   instances: {{ .Values.keycloak.instances }}
   {{- if .Values.keycloak.image }}
-  image: {{ .Values.keycloak.image }}
+  image: {{ include "platform-config.image" (dict "root" . "image" .Values.keycloak.image) | quote }}
   # the operator assumes custom images are already augmented (--optimized);
   # the pinned stock image is not, so keep the normal build path
   startOptimized: false
+  {{- end }}
+  {{- with .Values.global.imagePullSecrets }}
+  # Escape hatch to attach pull secrets to the operator-managed Keycloak pod.
+  unsupported:
+    podTemplate:
+      spec:
+        imagePullSecrets:
+          {{- range . }}
+          - name: {{ . | quote }}
+          {{- end }}
   {{- end }}
   # No bootstrapAdmin block: the operator auto-generates a temporary
   # bootstrap admin secret (keycloak-initial-admin). Workloads authenticate

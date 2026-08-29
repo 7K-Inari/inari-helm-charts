@@ -23,9 +23,10 @@ spec:
         {{- include "platform-config.componentLabels" (dict "root" . "component" "keycloak") | nindent 8 }}
     spec:
       restartPolicy: Never
+      {{- include "platform-config.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: verify
-          image: curlimages/curl:8.10.1
+          image: {{ include "platform-config.image" (dict "root" . "image" .Values.keycloak.hookImage) | quote }}
           env:
             - name: KC_BASE
               value: {{ include "platform-config.keycloakBaseUrl" . | quote }}

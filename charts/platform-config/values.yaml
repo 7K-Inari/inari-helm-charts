@@ -7,6 +7,14 @@
 global:
   # Extra labels applied to every first-party resource.
   labels: {}
+  # Registry prefix prepended to every image repository rendered by this
+  # chart (e.g. "registry.example.com:5000" for a mirrored/air-gapped
+  # install). Empty = pull from the per-image upstream registries.
+  imageRegistry: ""
+  # Names of pre-created pull secrets (e.g. synced via ESO). Rendered into
+  # the pod spec of every Job (and the Keycloak operand via the operator's
+  # unsupported podTemplate escape hatch). Create the secrets out-of-band.
+  imagePullSecrets: []
 
 # ---------------------------------------------------------------------------
 # Gateway API — parentRef to an ALREADY-EXISTING Gateway. This chart never
@@ -70,7 +78,11 @@ keycloak:
   # Pin Keycloak to a version matched with the operator. Setting
   # keycloak.image also renders startOptimized: false on the Keycloak CR
   # (the operator assumes custom images are already augmented).
-  image: quay.io/keycloak/keycloak:26.3.2
+  # global.imageRegistry is prepended to the repository; digest wins over tag.
+  image:
+    repository: quay.io/keycloak/keycloak
+    tag: 26.3.2
+    digest: ""
   # Override the in-cluster/admin backchannel base URL. Empty = derived
   # (bundled: http://keycloak-service:8080; external: keycloak.external.baseUrl).
   baseUrl: ""
@@ -111,7 +123,15 @@ keycloak:
   # Works for bundled and external instances.
   realmSync:
     enabled: false
-    image: adorsys/keycloak-config-cli:6.5.1-26
+    image:
+      repository: adorsys/keycloak-config-cli
+      tag: 6.5.1-26
+      digest: ""
+  # Image for the curl-based PostSync hook jobs (client-setup, realm-verify).
+  hookImage:
+    repository: curlimages/curl
+    tag: 8.10.1
+    digest: ""
   # Confidential client used by inari-server / inari-operator to call the
   # Keycloak Admin REST API (client_credentials grant; no admin user/password
   # anywhere). Rendered into the realm import; a PostSync hook job grants

@@ -3,6 +3,26 @@
   "title": "platform-config values",
   "type": "object",
   "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "labels": {
+          "type": "object",
+          "description": "Extra labels applied to every first-party resource."
+        },
+        "imageRegistry": {
+          "type": "string",
+          "description": "Registry prefix prepended to every image repository rendered by this chart (mirrored/air-gapped installs)."
+        },
+        "imagePullSecrets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Names of pre-created pull secrets rendered into every pod spec (and the Keycloak operand via unsupported podTemplate)."
+        }
+      }
+    },
     "gateway": {
       "type": "object",
       "description": "parentRef to an ALREADY-EXISTING Gateway. The chart never creates a Gateway/GatewayClass; a Gateway controller and Gateway must be deployed beforehand. Required (gateway.name) when any *.route.enabled=true.",
@@ -66,6 +86,46 @@
       "properties": {
         "enabled": {
           "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "description": "Keycloak image. global.imageRegistry is prepended to the repository; digest wins over tag.",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tag": {
+              "type": "string"
+            },
+            "digest": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository",
+            "tag"
+          ]
+        },
+        "hookImage": {
+          "type": "object",
+          "description": "Image for the curl-based PostSync hook jobs (client-setup, realm-verify).",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tag": {
+              "type": "string"
+            },
+            "digest": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "repository",
+            "tag"
+          ]
         },
         "baseUrl": {
           "type": "string",
@@ -147,7 +207,23 @@
               "type": "boolean"
             },
             "image": {
-              "type": "string"
+              "type": "object",
+              "properties": {
+                "repository": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "tag": {
+                  "type": "string"
+                },
+                "digest": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "repository",
+                "tag"
+              ]
             }
           }
         },

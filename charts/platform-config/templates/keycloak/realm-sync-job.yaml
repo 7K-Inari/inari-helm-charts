@@ -28,9 +28,10 @@ spec:
   template:
     spec:
       restartPolicy: Never
+      {{- include "platform-config.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: keycloak-config-cli
-          image: {{ .Values.keycloak.realmSync.image | quote }}
+          image: {{ include "platform-config.image" (dict "root" . "image" .Values.keycloak.realmSync.image) | quote }}
           env:
             - name: KEYCLOAK_URL
               value: {{ include "platform-config.keycloakBaseUrl" . | quote }}

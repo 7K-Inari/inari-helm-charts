@@ -1,0 +1,120 @@
+suite: global image registry and pull secrets
+templates:
+  - keycloak/keycloak.yaml
+  - keycloak/client-setup-job.yaml
+  - keycloak/realm-sync-job.yaml
+  - keycloak/realm-verify-job.yaml
+tests:
+  - it: renders default image references without a registry prefix
+    set:
+      keycloak.realmSync.enabled: true
+    asserts:
+      - equal:
+          path: spec.image
+          value: quay.io/keycloak/keycloak:26.3.2
+        template: keycloak/keycloak.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: curlimages/curl:8.10.1
+        template: keycloak/client-setup-job.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: adorsys/keycloak-config-cli:6.5.1-26
+        template: keycloak/realm-sync-job.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: curlimages/curl:8.10.1
+        template: keycloak/realm-verify-job.yaml
+
+  - it: prepends global.imageRegistry to every rendered image
+    set:
+      global.imageRegistry: registry.example.com:5000
+      keycloak.realmSync.enabled: true
+    asserts:
+      - equal:
+          path: spec.image
+          value: registry.example.com:5000/quay.io/keycloak/keycloak:26.3.2
+        template: keycloak/keycloak.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com:5000/curlimages/curl:8.10.1
+        template: keycloak/client-setup-job.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com:5000/adorsys/keycloak-config-cli:6.5.1-26
+        template: keycloak/realm-sync-job.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: registry.example.com:5000/curlimages/curl:8.10.1
+        template: keycloak/realm-verify-job.yaml
+
+  - it: prefers digest over tag for every image
+    set:
+      keycloak.image.digest: sha256:aaa
+      keycloak.hookImage.digest: sha256:bbb
+      keycloak.realmSync.enabled: true
+      keycloak.realmSync.image.digest: sha256:ccc
+    asserts:
+      - equal:
+          path: spec.image
+          value: quay.io/keycloak/keycloak@sha256:aaa
+        template: keycloak/keycloak.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: curlimages/curl@sha256:bbb
+        template: keycloak/client-setup-job.yaml
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: adorsys/keycloak-config-cli@sha256:ccc
+        template: keycloak/realm-sync-job.yaml
+        documentIndex: 1
+
+  - it: renders global.imagePullSecrets into every hook pod spec
+    set:
+      global.imagePullSecrets:
+        - mirror-pull
+      keycloak.realmSync.enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: mirror-pull
+        template: keycloak/client-setup-job.yaml
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: mirror-pull
+        template: keycloak/realm-sync-job.yaml
+        documentIndex: 1
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: mirror-pull
+        template: keycloak/realm-verify-job.yaml
+
+  - it: passes global.imagePullSecrets to the Keycloak operand via unsupported podTemplate
+    set:
+      global.imagePullSecrets:
+        - mirror-pull
+    asserts:
+      - equal:
+          path: spec.unsupported.podTemplate.spec.imagePullSecrets
+          value:
+            - name: mirror-pull
+        template: keycloak/keycloak.yaml
+
+  - it: renders no imagePullSecrets by default
+    set:
+      keycloak.realmSync.enabled: true
+    asserts:
+      - notExists:
+          path: spec.unsupported
+        template: keycloak/keycloak.yaml
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+        template: keycloak/client-setup-job.yaml
+      - notExists:
+          path: spec.template.spec.imagePullSecrets
+        template: keycloak/realm-verify-job.yaml

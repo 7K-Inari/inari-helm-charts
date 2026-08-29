@@ -108,3 +108,33 @@ or an external one synced from Vault.
 {{- define "platform-config.keycloakAdminClientSecretKey" -}}
 {{- if .Values.keycloak.enabled -}}client-secret{{- else -}}{{ .Values.keycloak.external.adminSecret.clientSecretKey | default "client-secret" }}{{- end -}}
 {{- end -}}
+
+{{/*
+Image reference: global.imageRegistry is prepended to the repository;
+digest wins over tag.
+Usage: {{ include "platform-config.image" (dict "root" . "image" .Values.keycloak.image) }}
+*/}}
+{{- define "platform-config.image" -}}
+{{- $repo := .image.repository -}}
+{{- with .root.Values.global.imageRegistry -}}
+{{- $repo = printf "%s/%s" (. | trimSuffix "/") $repo -}}
+{{- end -}}
+{{- if .image.digest -}}
+{{- printf "%s@%s" $repo .image.digest -}}
+{{- else -}}
+{{- printf "%s:%s" $repo .image.tag -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Pod-level imagePullSecrets from global.imagePullSecrets (list of secret
+names). Include at pod-spec indentation.
+*/}}
+{{- define "platform-config.imagePullSecrets" -}}
+{{- with .Values.global.imagePullSecrets }}
+imagePullSecrets:
+  {{- range . }}
+  - name: {{ . | quote }}
+  {{- end }}
+{{- end }}
+{{- end -}}
