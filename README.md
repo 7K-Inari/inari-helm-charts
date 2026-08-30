@@ -17,7 +17,7 @@ Canonical architecture & development plan: [inari-docs/docs/architecture/inari-p
 - `charts/platform-config` — the only chart in this repo: CNPG PostgreSQL
   Cluster + db secrets, Keycloak instance and realm `inari` glue (realm
   import/sync/verify as ArgoCD PostSync hooks). Published to
-  `oci://ghcr.io/7k-inari/charts` via release-please.
+  `oci://ghcr.io/7k-inari/inari-helm-charts/charts` via release-please.
 - `scripts/` — day-0 bootstrap, backup/restore, DR drill.
 - Component charts (`inari-operator`, `inari-operator-crds`, `inari-server`,
   `inari-console`) live in and are released from their component repos.
@@ -54,4 +54,4 @@ make test    # helm-unittest
 ```
 
 `charts/platform-config` is published as an OCI artifact to
-`oci://ghcr.io/7k-inari/charts` by `release.yaml` (release-please tags).
+`oci://ghcr.io/7k-inari/inari-helm-charts/charts` by `release.yaml` (release-please tags).

@@ -23,7 +23,9 @@ kubectl -n argocd rollout status deployment/argocd-server --timeout=300s
 kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=300s
 
 # Optional: registry credentials for the OCI charts consumed from
-# oci://ghcr.io/7k-inari/charts (private packages need auth in CI).
+# oci://ghcr.io/7k-inari/<repo>/charts. The chart packages are public, so ArgoCD
+# pulls anonymously; this secret is only needed while a package is still
+# private (e.g. before the first post-move release flips visibility).
 if [[ -n "${GHCR_TOKEN:-}" ]]; then
   log "configuring ArgoCD repo credentials for ghcr.io OCI charts"
   kubectl -n argocd apply -f - <<EOF
@@ -37,7 +39,7 @@ metadata:
 stringData:
   type: helm
   name: inari-charts
-  url: ghcr.io/7k-inari/charts
+  url: ghcr.io/7k-inari
   enableOCI: "true"
   username: ${GHCR_USERNAME:-github}
   password: ${GHCR_TOKEN}

@@ -1,12 +1,12 @@
 name: upgrade
 
-# Migration drill on kind: installs the last released inari-platform umbrella
-# chart (helm), seeds marker data, then migrates to the gitops-composed stack
+# Migration drill on kind: installs the platform-config chart with helm (git
+# path), seeds marker data, then migrates to the gitops-composed stack
 # (ArgoCD Applications from this PR) and asserts the stack is healthy and the
 # data survived.
 #
-# Path: the umbrella is installed with dataProtection.keepOnUninstall=true so
-# `helm uninstall` leaves the CNPG Cluster + PVCs in place (resource-policy:
+# Path: platform-config is installed with dataProtection.keepOnUninstall=true
+# so `helm uninstall` leaves the CNPG Cluster + PVCs in place (resource-policy:
 # keep). ArgoCD then adopts the surviving Cluster (apply semantics) while
 # platform-config recreates the db secrets (same dev passwords).
 
@@ -47,19 +47,17 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: scripts/preload-operator-image.sh chart-upgrade
 
-      # The old umbrella assumes cluster-provided operators; this legacy
-      # helper is retained solely for this migration test.
+      # platform-config never installs operators; the gitops stack gets them
+      # from ArgoCD Applications, the helm path needs them up front.
       - name: Install prerequisite operators
         run: ./scripts/install-operators.sh
 
-      - name: Install the previous umbrella release
+      - name: Install platform-config with helm (git path)
         run: |
-          helm upgrade --install inari oci://ghcr.io/7k-inari/charts/inari-platform \
-            --version 0.9.0 \
+          helm upgrade --install platform-config ./charts/platform-config \
             --namespace inari --create-namespace \
             --wait --timeout 15m \
             --set postgresql.storageSize=1Gi \
-            --set nats.config.jetstream.fileStore.pvc.size=1Gi \
             --set keycloak.hostname.hostname=http://keycloak.local:8080 \
             --set keycloak.resources.requests.cpu=100m \
             --set keycloak.resources.requests.memory=256Mi \
@@ -71,9 +69,9 @@ jobs:
           kubectl -n inari exec -i "$POD" -c postgres -- \
             psql -U postgres -d inari -c "CREATE TABLE migration_marker (id int PRIMARY KEY); INSERT INTO migration_marker VALUES (42);"
 
-      - name: Uninstall the umbrella (CNPG cluster survives via resource-policy=keep)
+      - name: Uninstall the helm release (CNPG cluster survives via resource-policy=keep)
         run: |
-          helm uninstall inari --namespace inari --wait
+          helm uninstall platform-config --namespace inari --wait
           kubectl -n inari get cluster.postgresql.cnpg.io postgresql
 
       - name: Bootstrap the gitops stack onto the same cluster
