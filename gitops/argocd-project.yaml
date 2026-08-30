@@ -7,7 +7,9 @@ metadata:
 spec:
   description: Inari platform (GitOps-composed control plane)
   sourceRepos:
-    - "ghcr.io/7k-inari/*"
+    # '**' crosses path separators (ArgoCD compiles globs with '/' as a
+    # separator): covers ghcr.io/7k-inari/<repo>/charts/<chart>.
+    - "ghcr.io/7k-inari/**"
     - "https://cloudnative-pg.github.io/charts"
     - "https://nats-io.github.io/k8s/helm/charts/"
     - "https://openfga.github.io/helm-charts"
