@@ -63,6 +63,19 @@ jobs:
             --set keycloak.resources.requests.memory=256Mi \
             --set dataProtection.keepOnUninstall=true
 
+      # The chart only creates CRs (CNPG Cluster, Keycloak CR); helm --wait
+      # returns immediately. Wait until the operator has the primary pod up.
+      - name: Wait for PostgreSQL to come up
+        run: |
+          for i in $(seq 1 60); do
+            POD=$(kubectl -n inari get pod -l cnpg.io/cluster=postgresql,cnpg.io/instanceRole=primary -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+            if [ -n "$POD" ] && kubectl -n inari wait --for=condition=ready "pod/$POD" --timeout=30s 2>/dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "CNPG primary pod never became ready"; kubectl -n inari get pods; exit 1
+
       - name: Seed marker data
         run: |
           POD=$(kubectl -n inari get pod -l cnpg.io/cluster=postgresql,cnpg.io/instanceRole=primary -o jsonpath='{.items[0].metadata.name}')
