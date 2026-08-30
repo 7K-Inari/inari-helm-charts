@@ -12,7 +12,7 @@ Stack: ArgoCD sync waves over Helm charts (chart releases as OCI)
 
 ## Conventions
 - Conventional Commits; SemVer releases; container images/artifacts cosign-signed (once CI exists).
-- Releases: release-please in PR-only mode (manifest mode, one component per chart path). Pushes to `main` open/update a Release PR with `Chart.yaml` bumps (via `x-release-please-version` annotations) and per-chart CHANGELOGs. Merging the Release PR triggers `release.yaml`, which creates per-chart tags (`<chart>-vX.Y.Z`, e.g. `platform-config-v0.2.0`), GitHub Releases, and publishes charts to `oci://ghcr.io/7k-inari/charts`. Charts version independently — never bump `version:`/`appVersion:` in `Chart.yaml` by hand.
+- Releases: release-please in PR-only mode (manifest mode, one component per chart path). Pushes to `main` open/update a Release PR with `Chart.yaml` bumps (via `x-release-please-version` annotations) and per-chart CHANGELOGs. Merging the Release PR triggers `release.yaml`, which creates per-chart tags (`<chart>-vX.Y.Z`, e.g. `platform-config-v0.2.0`), GitHub Releases, and publishes charts to `oci://ghcr.io/7k-inari/inari-helm-charts/charts`. Charts version independently — never bump `version:`/`appVersion:` in `Chart.yaml` by hand.
 - Write tests for new behavior; keep changes minimal and focused.
 - Canonical architecture & development plan: https://github.com/7K-Inari/inari-docs/blob/main/docs/architecture/inari-platform-plan.md (section references below point into it).
 

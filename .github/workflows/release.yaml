@@ -98,13 +98,13 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Push chart as OCI artifact
-        run: helm push "dist/${{ steps.chart.outputs.name }}-${{ steps.chart.outputs.version }}.tgz" oci://ghcr.io/7k-inari/charts
+        run: helm push "dist/${{ steps.chart.outputs.name }}-${{ steps.chart.outputs.version }}.tgz" oci://ghcr.io/7k-inari/${{ github.event.repository.name }}/charts
 
       - name: Verify published chart
         run: |
           TAG="${{ steps.chart.outputs.version }}"
           for i in $(seq 1 12); do
-            if helm show chart "oci://ghcr.io/7k-inari/charts/${{ steps.chart.outputs.name }}" --version "$TAG" > /dev/null 2>&1; then
+            if helm show chart "oci://ghcr.io/7k-inari/${{ github.event.repository.name }}/charts/${{ steps.chart.outputs.name }}" --version "$TAG" > /dev/null 2>&1; then
               echo "Published ${{ steps.chart.outputs.name }}:$TAG verified"
               exit 0
             fi

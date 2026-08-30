@@ -1,5 +1,6 @@
-# inari-console — OCI chart (last published from this repo as 0.3.0; future
-# releases come from the inari-ui repo after the chart move task).
+# inari-console — OCI chart released from the inari-ui repo (chart moved out
+# of this repo; publishes flip the GHCR package to public so this pulls
+# anonymously).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -10,7 +11,7 @@ metadata:
 spec:
   project: inari
   source:
-    repoURL: ghcr.io/7k-inari/charts
+    repoURL: ghcr.io/7k-inari/inari-ui/charts
     chart: inari-console
     targetRevision: 0.3.0
     helm:

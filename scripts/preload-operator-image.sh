@@ -14,8 +14,17 @@ echo "$GHCR_TOKEN" | docker login ghcr.io -u "${GHCR_USERNAME:-github}" --passwo
 
 APP_VERSION="${OPERATOR_IMAGE_TAG:-}"
 if [[ -z "$APP_VERSION" ]]; then
-  APP_VERSION=$(gh api repos/7K-Inari/inari-operator/contents/charts/inari-operator/Chart.yaml \
-    --jq .content | base64 -d | awk '/^appVersion:/{gsub(/"/,"",$2); print $2}')
+  # Read appVersion from the PUBLISHED chart (the one the ArgoCD Application
+  # pins), not the repo working tree — the tree drifts ahead between
+  # releases and would side-load a tag the deployed chart never references.
+  CHART_REPO="${OPERATOR_CHART_REPO:-7k-inari/charts/inari-operator}"
+  CHART_VERSION="${OPERATOR_CHART_VERSION:-0.1.1}"
+  OCI_TOKEN=$(curl -sf "https://ghcr.io/token?scope=repository:${CHART_REPO}:pull" | jq -r .token)
+  CONFIG_DIGEST=$(curl -sf -H "Authorization: Bearer $OCI_TOKEN" \
+    -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+    "https://ghcr.io/v2/${CHART_REPO}/manifests/${CHART_VERSION}" | jq -r .config.digest)
+  APP_VERSION=$(curl -sfL -H "Authorization: Bearer $OCI_TOKEN" \
+    "https://ghcr.io/v2/${CHART_REPO}/blobs/${CONFIG_DIGEST}" | jq -r .appVersion)
 fi
 
 # 0.0.6 was pushed only as :latest (semver-tag bug fixed in

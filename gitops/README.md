@@ -11,11 +11,11 @@ cluster and applies these manifests.
 |-----:|-------------|--------|
 | -2 | `cnpg` | helm `cloudnative-pg` 0.29.0 (CloudNativePG operator) |
 | -2 | `keycloak-operator` | kustomize `gitops/operators/keycloak-operator` (upstream 26.3.2 + cluster-wide patch) |
-| -1 | `inari-operator-crds` | OCI `ghcr.io/7k-inari/charts/inari-operator-crds` |
+| -1 | `inari-operator-crds` | OCI `ghcr.io/7k-inari/inari-operator/charts/inari-operator-crds` |
 | 0 | `platform-config` | `charts/platform-config` in this repo (CNPG Cluster, `inari-db` secrets, Keycloak CR, realm import + PostSync jobs) |
 | 1 | `nats`, `openfga` | upstream helm charts (values lifted from the old umbrella) |
-| 2 | `inari-operator` | OCI `ghcr.io/7k-inari/charts/inari-operator` |
-| 3 | `inari-server`, `inari-console` | OCI `ghcr.io/7k-inari/charts/...` |
+| 2 | `inari-operator` | OCI `ghcr.io/7k-inari/inari-operator/charts/inari-operator` |
+| 3 | `inari-server`, `inari-console` | OCI `ghcr.io/7k-inari/<repo>/charts/...` |
 
 Inside `platform-config`, per-resource sync waves order secrets (-1) → CNPG
 Cluster (0) → Keycloak CR (1) → KeycloakRealmImport (2); the client-setup /
