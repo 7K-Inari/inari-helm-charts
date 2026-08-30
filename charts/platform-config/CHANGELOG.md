@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/7K-Inari/inari-helm-charts/compare/platform-config-v0.2.1...platform-config-v0.2.2) (2026-08-30)
+
+
+### Bug Fixes
+
+* **ci:** consume charts from per-repo GHCR paths and make packages public ([#42](https://github.com/7K-Inari/inari-helm-charts/issues/42)) ([b92543c](https://github.com/7K-Inari/inari-helm-charts/commit/b92543cf552a88869dbdb3de7ea17506c14397ed))
+
 ## [0.2.1](https://github.com/7K-Inari/inari-helm-charts/compare/platform-config-v0.2.0...platform-config-v0.2.1) (2026-08-28)
 
 
