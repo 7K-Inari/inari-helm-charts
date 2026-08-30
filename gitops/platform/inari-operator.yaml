@@ -9,7 +9,7 @@ metadata:
 spec:
   project: inari
   source:
-    repoURL: ghcr.io/7k-inari/inari-operator/charts
+    repoURL: ghcr.io/7k-inari/charts  # TODO: move to ghcr.io/7k-inari/inari-operator/charts once the inari-operator repo publishes to its repo-scoped path
     chart: inari-operator
     targetRevision: 0.1.1
     helm:

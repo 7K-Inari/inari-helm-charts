@@ -13,7 +13,7 @@ spec:
   source:
     repoURL: ghcr.io/7k-inari/inari-server/charts
     chart: inari-server
-    targetRevision: 0.1.0
+    targetRevision: 0.1.2
     helm:
       releaseName: inari-server
   destination:
