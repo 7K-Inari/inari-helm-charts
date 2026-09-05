@@ -163,6 +163,17 @@ tests:
       - contains:
           path: spec.realm.users[?(@.username == "dev-admin")].clientRoles.inari-server
           content: inari-platform-admin
+  - it: seeds the platform-admins group with dev-admin as a member
+    template: keycloak/realmimport-inari.yaml
+    asserts:
+      - contains:
+          path: spec.realm.groups
+          content:
+            name: platform-admins
+            path: /platform-admins
+      - contains:
+          path: spec.realm.users[?(@.username == "dev-admin")].groups
+          content: /platform-admins
   - it: renders the console redirect URIs from values (tpl-rendered realm)
     template: keycloak/realmimport-inari.yaml
     set:
