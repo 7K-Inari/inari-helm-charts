@@ -13,9 +13,31 @@ spec:
   source:
     repoURL: ghcr.io/7k-inari/inari-server/charts
     chart: inari-server
-    targetRevision: 0.1.2
+    targetRevision: 0.1.5
     helm:
       releaseName: inari-server
+      values: |
+        gateway:
+          name: internet-gateway
+          namespace: istio
+          sectionName: https-7kgroup
+        route:
+          enabled: true
+          hostnames:
+            - inari.7kgroup.org
+          pathPrefix: /api
+          # Dedicated agent-gateway hostname: PathPrefix matching is
+          # segment-based and cannot express "/inari.", so agent ConnectRPC
+          # gets its own hostname routed wholly to inari-server.
+          agentHostnames:
+            - inari-gw.7kgroup.org
+        extraEnv:
+          - name: INARI_AGENT_GATEWAY_ADDRESS
+            value: "https://inari-gw.7kgroup.org"
+          - name: INARI_AGENT_IMAGE_REPO
+            value: "ghcr.io/7k-inari/inari-agent"
+          - name: INARI_AGENT_IMAGE_TAG
+            value: "0.3.0"
   destination:
     server: https://kubernetes.default.svc
     namespace: inari
