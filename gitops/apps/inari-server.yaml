@@ -13,7 +13,7 @@ spec:
   source:
     repoURL: ghcr.io/7k-inari/inari-server/charts
     chart: inari-server
-    targetRevision: 0.1.4
+    targetRevision: 0.1.5
     helm:
       releaseName: inari-server
       values: |
@@ -26,14 +26,14 @@ spec:
           hostnames:
             - inari.7kgroup.org
           pathPrefix: /api
-          # Agent-facing ConnectRPC (RegistrationService/EventStreamService)
-          # so agents can register/stream through the public URL instead of
-          # falling through to the console (405).
-          extraPathPrefixes:
-            - /inari.
+          # Dedicated agent-gateway hostname: PathPrefix matching is
+          # segment-based and cannot express "/inari.", so agent ConnectRPC
+          # gets its own hostname routed wholly to inari-server.
+          agentHostnames:
+            - inari-gw.7kgroup.org
         extraEnv:
           - name: INARI_AGENT_GATEWAY_ADDRESS
-            value: "https://inari.7kgroup.org"
+            value: "https://inari-gw.7kgroup.org"
           - name: INARI_AGENT_IMAGE_REPO
             value: "ghcr.io/7k-inari/inari-agent"
           - name: INARI_AGENT_IMAGE_TAG
