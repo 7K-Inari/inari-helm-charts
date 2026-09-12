@@ -109,6 +109,18 @@ tests:
       - contains:
           path: spec.realm.clients[?(@.clientId == "inari-ui")].defaultClientScopes
           content: basic
+      - contains:
+          path: spec.realm.clients[?(@.clientId == "inari-cli")].defaultClientScopes
+          content: basic
+  - it: exposes the device authorization grant on the inari-cli client
+    template: keycloak/realmimport-inari.yaml
+    asserts:
+      - equal:
+          path: spec.realm.clients[?(@.clientId == "inari-cli")].attributes["oauth2.device.authorization.grant.enabled"]
+          value: "true"
+      - equal:
+          path: spec.realm.clients[?(@.clientId == "inari-cli")].publicClient
+          value: true
   - it: maps aud=inari-server into access tokens for both clients
     template: keycloak/realmimport-inari.yaml
     asserts:
