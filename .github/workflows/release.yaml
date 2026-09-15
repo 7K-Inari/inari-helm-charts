@@ -38,8 +38,10 @@ jobs:
       - name: Dispatch override
         id: disp
         if: github.event_name == 'workflow_dispatch'
+        env:
+          CHART_PATH: ${{ inputs.chart-path }}
         run: |
-          path="${{ inputs.chart-path }}"
+          path="$CHART_PATH"
           test -f "$path/Chart.yaml" || { echo "no Chart.yaml at $path"; exit 1; }
           jq -n --arg p "$path" '[$p]' > /dev/null  # validate
           echo "paths=$(jq -cn --arg p "$path" '[$p]')" >> "$GITHUB_OUTPUT"
