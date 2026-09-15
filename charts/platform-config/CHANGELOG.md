@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/7K-Inari/inari-helm-charts/compare/platform-config-v0.2.2...platform-config-v0.3.0) (2026-09-12)
+
+
+### Features
+
+* **keycloak:** add inari-cli public client (device authorization grant) ([#46](https://github.com/7K-Inari/inari-helm-charts/issues/46)) ([1ebfd66](https://github.com/7K-Inari/inari-helm-charts/commit/1ebfd663c0c4efcb96377aaeead7703bd3e4479c))
+
 ## [0.2.2](https://github.com/7K-Inari/inari-helm-charts/compare/platform-config-v0.2.1...platform-config-v0.2.2) (2026-08-30)
 
 
