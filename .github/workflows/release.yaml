@@ -38,8 +38,10 @@ jobs:
       - name: Dispatch override
         id: disp
         if: github.event_name == 'workflow_dispatch'
+        env:
+          CHART_PATH: ${{ inputs.chart-path }}
         run: |
-          path="${{ inputs.chart-path }}"
+          path="$CHART_PATH"
           test -f "$path/Chart.yaml" || { echo "no Chart.yaml at $path"; exit 1; }
           jq -n --arg p "$path" '[$p]' > /dev/null  # validate
           echo "paths=$(jq -cn --arg p "$path" '[$p]')" >> "$GITHUB_OUTPUT"
@@ -70,7 +72,9 @@ jobs:
           version: v3.18.6
 
       - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2.7.0
+        # v2.8.0: fixes sigstore/cosign-installer v3.8.1 (pinned inside v2.7.0)
+        # failing with "Unable to validate cosign version: 'v2.4.1'".
+        uses: helm/chart-testing-action@v2.8.0
         with:
           version: v3.12.0
 
