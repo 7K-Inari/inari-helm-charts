@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/7K-Inari/inari-helm-charts/compare/platform-config-v0.3.0...platform-config-v0.4.0) (2026-09-18)
+
+
+### Features
+
+* **platform-config:** seed platform-admins group with dev-admin member ([#44](https://github.com/7K-Inari/inari-helm-charts/issues/44)) ([e36f4d9](https://github.com/7K-Inari/inari-helm-charts/commit/e36f4d9bab747dd5f79b1fc30b7e35e18fa23694))
+
+
+### Bug Fixes
+
+* **ci:** bump chart-testing-action to v2.8.0 (stale cosign v2.4.1 pin) ([#48](https://github.com/7K-Inari/inari-helm-charts/issues/48)) ([a937a43](https://github.com/7K-Inari/inari-helm-charts/commit/a937a43db98a8404464ac778262f4cfae8654f5c))
+
 ## [0.3.0](https://github.com/7K-Inari/inari-helm-charts/compare/platform-config-v0.2.2...platform-config-v0.3.0) (2026-09-12)
 
 
