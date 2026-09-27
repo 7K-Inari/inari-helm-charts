@@ -1,4 +1,5 @@
 CHART_DIR := charts/platform-config
+CHART_DIRS := $(wildcard charts/*)
 GITOPS_DIR := gitops
 BACKUP_DIR ?= ./backups
 
@@ -21,6 +22,7 @@ dr-drill: ## Provision a fresh kind cluster, restore BACKUP and verify: make dr-
 
 lint: ## helm lint + chart-testing lint + gitops manifest validation
 	helm lint $(CHART_DIR)
+	helm lint charts/dex -f charts/dex/ci/default-values.yaml
 	ct lint --config ct.yaml
 	$(MAKE) lint-gitops
 
@@ -28,7 +30,7 @@ lint-gitops: ## Validate gitops/ manifests (kustomize build of the keycloak-oper
 	kubectl kustomize $(GITOPS_DIR)/operators/keycloak-operator > /dev/null
 
 test: ## helm-unittest suite
-	helm unittest $(CHART_DIR)
+	helm unittest $(CHART_DIRS)
 
 package: ## Package the chart into dist/
 	mkdir -p dist

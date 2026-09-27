@@ -1,0 +1,152 @@
+suite: argocd oidc sso via cluster-local dex
+templates:
+  - argocd/argocd-cm.yaml
+  - argocd/argocd-rbac-cm.yaml
+tests:
+  - it: renders nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: renders argocd-cm with the dex issuer and secret indirection
+    template: argocd/argocd-cm.yaml
+    set:
+      argocd:
+        enabled: true
+        oidc:
+          issuerUrl: https://dex.cluster-abc123.example.org
+          clientSecretRef:
+            name: vault-argocd-dex
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: argocd-cm
+      - equal:
+          path: metadata.namespace
+          value: argocd
+      - equal:
+          path: data["admin.enabled"]
+          value: "false"
+      - matchRegex:
+          path: data["oidc.config"]
+          pattern: "issuer: https://dex\\.cluster-abc123\\.example\\.org"
+      - matchRegex:
+          path: data["oidc.config"]
+          pattern: "clientID: argocd"
+      # secret referenced via $<secret>:<key> indirection, never inlined
+      - matchRegex:
+          path: data["oidc.config"]
+          pattern: "clientSecret: \\$vault-argocd-dex:client-secret"
+      - matchRegex:
+          path: data["oidc.config"]
+          pattern: 'requestedScopes: \["openid","profile","email","groups","federated:id"\]'
+      - notExists:
+          path: data["accounts.inari-breakglass"]
+  - it: fails without an issuer url
+    template: argocd/argocd-cm.yaml
+    set:
+      argocd:
+        enabled: true
+        oidc:
+          clientSecretRef:
+            name: vault-argocd-dex
+    asserts:
+      - failedTemplate:
+          errorMessage: argocd.oidc.issuerUrl is required when argocd.enabled=true — point it at this cluster's Dex issuer (charts/dex)
+  - it: fails without a client secret reference
+    template: argocd/argocd-cm.yaml
+    set:
+      argocd:
+        enabled: true
+        oidc:
+          issuerUrl: https://dex.cluster-abc123.example.org
+    asserts:
+      - failedTemplate:
+          errorMessage: argocd.oidc.clientSecretRef.name is required when argocd.enabled=true — reference an ESO/Vault-synced Secret holding the Dex static-client secret
+  - it: maps keycloak groups to role:admin with a readonly default
+    template: argocd/argocd-rbac-cm.yaml
+    set:
+      argocd:
+        enabled: true
+        oidc:
+          issuerUrl: https://dex.cluster-abc123.example.org
+          clientSecretRef:
+            name: vault-argocd-dex
+    asserts:
+      - equal:
+          path: metadata.name
+          value: argocd-rbac-cm
+      - equal:
+          path: data["policy.default"]
+          value: role:readonly
+      - matchRegex:
+          path: data["policy.csv"]
+          pattern: "g, /platform-admins, role:admin"
+      - notMatchRegex:
+          path: data["policy.csv"]
+          pattern: "inari-breakglass"
+  - it: appends extra policy lines and honors custom admin groups
+    template: argocd/argocd-rbac-cm.yaml
+    set:
+      argocd:
+        enabled: true
+        oidc:
+          issuerUrl: https://dex.cluster-abc123.example.org
+          clientSecretRef:
+            name: vault-argocd-dex
+        rbac:
+          adminGroups:
+            - /org-acme/admins
+          extraPolicyCsv: "g, /org-acme/viewers, role:readonly"
+    asserts:
+      - matchRegex:
+          path: data["policy.csv"]
+          pattern: "g, /org-acme/admins, role:admin"
+      - matchRegex:
+          path: data["policy.csv"]
+          pattern: "g, /org-acme/viewers, role:readonly"
+  - it: enables the break-glass static account only when explicitly requested
+    template: argocd/argocd-cm.yaml
+    set:
+      argocd:
+        enabled: true
+        oidc:
+          issuerUrl: https://dex.cluster-abc123.example.org
+          clientSecretRef:
+            name: vault-argocd-dex
+        breakGlass:
+          staticTokenEnabled: true
+    asserts:
+      - equal:
+          path: data["accounts.inari-breakglass"]
+          value: apiKey, login
+  - it: grants the break-glass account role:admin in the rbac policy
+    template: argocd/argocd-rbac-cm.yaml
+    set:
+      argocd:
+        enabled: true
+        oidc:
+          issuerUrl: https://dex.cluster-abc123.example.org
+          clientSecretRef:
+            name: vault-argocd-dex
+        breakGlass:
+          staticTokenEnabled: true
+    asserts:
+      - matchRegex:
+          path: data["policy.csv"]
+          pattern: "g, inari-breakglass, role:admin"
+  - it: renders into a custom argocd namespace
+    template: argocd/argocd-cm.yaml
+    set:
+      argocd:
+        enabled: true
+        namespace: gitops
+        oidc:
+          issuerUrl: https://dex.cluster-abc123.example.org
+          clientSecretRef:
+            name: vault-argocd-dex
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: gitops

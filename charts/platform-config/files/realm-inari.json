@@ -1,3 +1,10 @@
+{{- $clusterIds := list -}}
+{{- range .Values.keycloak.dexClusters -}}
+{{- if has .id $clusterIds -}}
+{{- fail (printf "keycloak.dexClusters: duplicate id %q — client ids cluster-<id>-dex must be unique" .id) -}}
+{{- end -}}
+{{- $clusterIds = append $clusterIds .id -}}
+{{- end -}}
 {
   "realm": "inari",
   "enabled": true,
@@ -55,6 +62,77 @@
       ]
     }
   },
+  "clientScopes": [
+    {
+      "name": "aud-inari-agent-gateway",
+      "description": "Adds aud=inari-agent-gateway to access tokens",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-inari-agent-gateway",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "inari-agent-gateway",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "aud-inari-extension-gateway",
+      "description": "Adds aud=inari-extension-gateway to access tokens",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-inari-extension-gateway",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "inari-extension-gateway",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "name": "aud-kubernetes",
+      "description": "Adds aud=kubernetes to access tokens (tenant-cluster apiserver OIDC)",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-kubernetes",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "kubernetes",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
   "clients": [
     {
       "clientId": {{ .Values.keycloak.adminClient.clientId | toJson }},
@@ -166,6 +244,29 @@
           }
         }
       ]
-    }
+    }{{- range .Values.keycloak.dexClusters }},
+    {
+      "clientId": {{ printf "cluster-%s-dex" .id | toJson }},
+      "description": "Cluster-local Dex for tenant cluster {{ .id }} (OIDC pass-through + token exchange into extension audiences). Runtime provisioning/secret rotation is owned by inari-server (W2); the secret here is a realm-creation placeholder.",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": {{ .secret | toJson }},
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "attributes": {
+        "standard.token.exchange.enabled": "true"
+      },
+      "redirectUris": {{ .redirectUris | default (list (printf "https://dex.cluster-%s.local/dex/callback" .id)) | toJson }},
+      "defaultClientScopes": [
+        "basic",
+        "openid",
+        "profile",
+        "email",
+        "organization"
+      ],
+      "optionalClientScopes": [{{- $auds := .audiences -}}{{- if not (hasKey . "audiences") -}}{{- $auds = list "kubernetes" "inari-extension-gateway" -}}{{- end -}}{{- range $i, $a := $auds }}{{ if $i }}, {{ end }}{{ printf "aud-%s" $a | toJson }}{{- end }}]
+    }{{- end }}
   ]
 }

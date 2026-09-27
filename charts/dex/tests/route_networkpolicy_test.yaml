@@ -1,0 +1,130 @@
+suite: dex httproute, network policy, pdb
+templates:
+  - httproute.yaml
+  - networkpolicy.yaml
+  - pdb.yaml
+tests:
+  - it: renders no HTTPRoute by default
+    template: httproute.yaml
+    set:
+      issuer: https://dex.cluster-abc123.example.org
+      config:
+        existingSecret: vault-dex-config
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: renders the HTTPRoute against the existing gateway
+    template: httproute.yaml
+    set:
+      issuer: https://dex.cluster-abc123.example.org
+      config:
+        existingSecret: vault-dex-config
+      gateway:
+        name: platform-gateway
+        namespace: gateway-system
+      route:
+        enabled: true
+        hostnames:
+          - dex.cluster-abc123.example.org
+    asserts:
+      - isAPIVersion:
+          of: gateway.networking.k8s.io/v1
+      - equal:
+          path: spec.parentRefs[0].name
+          value: platform-gateway
+      - equal:
+          path: spec.parentRefs[0].namespace
+          value: gateway-system
+      - contains:
+          path: spec.hostnames
+          content: dex.cluster-abc123.example.org
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 5556
+  - it: fails when route is enabled without gateway.name
+    template: httproute.yaml
+    set:
+      issuer: https://dex.cluster-abc123.example.org
+      config:
+        existingSecret: vault-dex-config
+      route:
+        enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: gateway.name is required when route.enabled=true — the chart does not create a Gateway; point gateway.name at the Gateway you have already deployed
+  - it: renders no NetworkPolicy by default
+    template: networkpolicy.yaml
+    set:
+      issuer: https://dex.cluster-abc123.example.org
+      config:
+        existingSecret: vault-dex-config
+    asserts:
+      - hasDocuments:
+          count: 0
+  - it: restricts ingress to in-cluster and egress to DNS + 443 when enabled
+    template: networkpolicy.yaml
+    set:
+      issuer: https://dex.cluster-abc123.example.org
+      config:
+        existingSecret: vault-dex-config
+      networkPolicy:
+        enabled: true
+    asserts:
+      - isKind:
+          of: NetworkPolicy
+      - equal:
+          path: spec.policyTypes
+          value: ["Ingress", "Egress"]
+      - equal:
+          path: spec.ingress[0].ports[0].port
+          value: http
+      - equal:
+          path: spec.egress[0].to[0].namespaceSelector.matchLabels["kubernetes.io/metadata.name"]
+          value: kube-system
+      - equal:
+          path: spec.egress[1].to[0].ipBlock.cidr
+          value: 0.0.0.0/0
+      - equal:
+          path: spec.egress[1].ports[0].port
+          value: 443
+  - it: scopes egress 443 to explicit CIDRs when given
+    template: networkpolicy.yaml
+    set:
+      issuer: https://dex.cluster-abc123.example.org
+      config:
+        existingSecret: vault-dex-config
+      networkPolicy:
+        enabled: true
+        egressCidrs:
+          - 10.0.0.0/8
+          - 140.82.112.0/20
+    asserts:
+      - equal:
+          path: spec.egress[1].to[0].ipBlock.cidr
+          value: 10.0.0.0/8
+      - equal:
+          path: spec.egress[1].to[1].ipBlock.cidr
+          value: 140.82.112.0/20
+  - it: renders the PDB when enabled
+    template: pdb.yaml
+    set:
+      issuer: https://dex.cluster-abc123.example.org
+      config:
+        existingSecret: vault-dex-config
+      podDisruptionBudget:
+        enabled: true
+    asserts:
+      - isAPIVersion:
+          of: policy/v1
+      - equal:
+          path: spec.minAvailable
+          value: 1
+  - it: renders no PDB by default
+    template: pdb.yaml
+    set:
+      issuer: https://dex.cluster-abc123.example.org
+      config:
+        existingSecret: vault-dex-config
+    asserts:
+      - hasDocuments:
+          count: 0

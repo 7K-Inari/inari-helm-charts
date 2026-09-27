@@ -1,0 +1,21 @@
+apiVersion: v2
+name: dex
+description: >-
+  Cluster-local Dex OIDC issuer for one Inari tenant cluster: brokers per-user
+  SSO (incl. git social login) and OIDC pass-through to the platform Keycloak
+  (realm "inari", client cluster-<id>-dex). One instance per tenant cluster,
+  reconciled by the inari-operator (W3); published as an OCI chart from
+  oci://ghcr.io/7k-inari/inari-helm-charts/charts.
+type: application
+version: 0.1.0  # x-release-please-version
+appVersion: 2.43.1  # x-release-please-version
+keywords:
+  - inari
+  - oidc
+  - dex
+home: https://github.com/7K-Inari/inari-helm-charts
+sources:
+  - https://github.com/7K-Inari/inari-helm-charts
+maintainers:
+  - name: 7K-Inari
+    url: https://github.com/7K-Inari

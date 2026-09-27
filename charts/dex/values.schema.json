@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json.schemastore.org/chart",
+  "title": "dex values",
+  "type": "object",
+  "properties": {
+    "global": {
+      "type": "object",
+      "properties": {
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string",
+          "description": "Empty = appVersion from Chart.yaml."
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      }
+    },
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "issuer": {
+      "type": "string",
+      "description": "Public issuer URL of this cluster's Dex (e.g. https://dex.cluster-<id>.example.org). Required at render time (template-validated so ci/default lint can pass)."
+    },
+    "config": {
+      "type": "object",
+      "description": "Dex config source: exactly one of existingSecret (production, ESO/Vault) or devMode (kind-only mock connector).",
+      "properties": {
+        "existingSecret": {
+          "type": "string",
+          "description": "Name of a pre-provisioned Secret carrying the full Dex config.yaml."
+        },
+        "configKey": {
+          "type": "string",
+          "minLength": 1,
+          "default": "config.yaml"
+        },
+        "devMode": {
+          "type": "boolean",
+          "description": "DEV ONLY: render a mock-connector ConfigMap."
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+        },
+        "port": {
+          "type": "integer",
+          "default": 5556
+        }
+      }
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "description": "parentRef to an ALREADY-EXISTING Gateway. Required (gateway.name) when route.enabled=true.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "sectionName": {
+          "type": "string"
+        }
+      }
+    },
+    "route": {
+      "type": "object",
+      "description": "HTTPRoute exposing Dex via the Gateway referenced in gateway:.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "hostnames": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "extraIngressPeers": {
+          "type": "array",
+          "description": "Additional NetworkPolicy peers allowed to reach the Dex API (e.g. the gateway/ingress namespace).",
+          "items": {
+            "type": "object"
+          }
+        },
+        "egressCidrs": {
+          "type": "array",
+          "description": "CIDRs allowed on egress 443 (Keycloak issuer + git providers). Empty = any IPv4 destination on 443.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "object"
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "minAvailable": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "podSecurityContext": {
+      "type": "object"
+    },
+    "securityContext": {
+      "type": "object"
+    },
+    "nodeSelector": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "tolerations": {
+      "type": "array"
+    },
+    "affinity": {
+      "type": "object"
+    },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    }
+  },
+  "description": "Cluster-local Dex OIDC issuer for one Inari tenant cluster (per-user SSO via git social login + OIDC pass-through to Keycloak realm 'inari' as client cluster-<id>-dex). Secrets are never inline: production config comes from config.existingSecret (ESO/Vault)."
+}

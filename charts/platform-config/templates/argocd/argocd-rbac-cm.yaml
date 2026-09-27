@@ -1,0 +1,22 @@
+{{- if .Values.argocd.enabled }}
+# Maps Keycloak group paths (via the Dex groups claim) to ArgoCD roles.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: {{ .Values.argocd.namespace }}
+  labels:
+    {{- include "platform-config.componentLabels" (dict "root" . "component" "argocd") | nindent 4 }}
+data:
+  policy.default: {{ .Values.argocd.rbac.policyDefault | quote }}
+  policy.csv: |
+    {{- range .Values.argocd.rbac.adminGroups }}
+    g, {{ . }}, role:admin
+    {{- end }}
+    {{- if .Values.argocd.breakGlass.staticTokenEnabled }}
+    g, inari-breakglass, role:admin
+    {{- end }}
+    {{- with .Values.argocd.rbac.extraPolicyCsv }}
+    {{ . | nindent 4 }}
+    {{- end }}
+{{- end }}
