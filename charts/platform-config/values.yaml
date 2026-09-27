@@ -164,6 +164,53 @@ keycloak:
     annotations: {}
 
 # ---------------------------------------------------------------------------
+# ArgoCD — per-user SSO via the cluster-local Dex (charts/dex) as the DEFAULT
+# login path when enabled. Static accounts.* tokens are a documented
+# legacy/break-glass fallback only (see breakGlass below). Renders argocd-cm /
+# argocd-rbac-cm against a manifest-installed ArgoCD (scripts/install-argocd.sh)
+# — if ArgoCD is operator-managed, configure OIDC through the operator instead
+# and leave argocd.enabled=false.
+# ---------------------------------------------------------------------------
+argocd:
+  enabled: false
+  # Namespace where ArgoCD is installed.
+  namespace: argocd
+  # Disable the local admin account when SSO is on (recommended; break-glass
+  # access goes through breakGlass below, not a shared admin password).
+  adminEnabled: false
+  oidc:
+    # Issuer of THIS cluster's Dex, e.g. https://dex.cluster-abc123.example.org
+    issuerUrl: ""
+    clientId: argocd
+    # Reference to an ESO/Vault-synced Secret in argocd.namespace holding the
+    # Dex static-client secret for ArgoCD. The chart never inlines the value;
+    # argocd-cm references it via the $<secret>:<key> indirection.
+    clientSecretRef:
+      name: ""
+      key: client-secret
+    requestedScopes:
+      - openid
+      - profile
+      - email
+      - groups
+      - federated:id
+  rbac:
+    # Default role for authenticated users not in any mapped group.
+    policyDefault: role:readonly
+    # Keycloak group paths (carried through the Dex groups claim) mapped to
+    # role:admin. Organization-derived groups can be mapped via extraPolicyCsv.
+    adminGroups:
+      - /platform-admins
+    # Extra policy.csv lines appended verbatim (e.g. org-scoped group mappings).
+    extraPolicyCsv: ""
+  breakGlass:
+    # Legacy/break-glass fallback ONLY: creates the local account
+    # `inari-breakglass` (login + apiKey) when per-user SSO is unavailable.
+    # Its password is set out-of-band (argocd CLI / argocd-secret) and is
+    # never stored by this chart. Keep false in normal operation.
+    staticTokenEnabled: false
+
+# ---------------------------------------------------------------------------
 # Data protection — prune/uninstall safety for stateful resources.
 # ---------------------------------------------------------------------------
 dataProtection:

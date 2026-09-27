@@ -1,0 +1,30 @@
+{{- if .Values.argocd.enabled }}
+{{- if not .Values.argocd.oidc.issuerUrl }}
+{{- fail "argocd.oidc.issuerUrl is required when argocd.enabled=true — point it at this cluster's Dex issuer (charts/dex)" }}
+{{- end }}
+{{- if not .Values.argocd.oidc.clientSecretRef.name }}
+{{- fail "argocd.oidc.clientSecretRef.name is required when argocd.enabled=true — reference an ESO/Vault-synced Secret holding the Dex static-client secret" }}
+{{- end }}
+# Per-user SSO via the cluster-local Dex. Static tokens are break-glass only
+# (argocd.breakGlass.staticTokenEnabled).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: {{ .Values.argocd.namespace }}
+  labels:
+    {{- include "platform-config.componentLabels" (dict "root" . "component" "argocd") | nindent 4 }}
+data:
+  admin.enabled: {{ .Values.argocd.adminEnabled | quote }}
+  {{- if .Values.argocd.breakGlass.staticTokenEnabled }}
+  # Legacy/break-glass fallback account. Password is set out-of-band via the
+  # argocd CLI (argocd account update-password) — never stored by this chart.
+  accounts.inari-breakglass: apiKey, login
+  {{- end }}
+  oidc.config: |
+    name: Inari SSO (Dex)
+    issuer: {{ .Values.argocd.oidc.issuerUrl }}
+    clientID: {{ .Values.argocd.oidc.clientId }}
+    clientSecret: ${{ .Values.argocd.oidc.clientSecretRef.name }}:{{ .Values.argocd.oidc.clientSecretRef.key }}
+    requestedScopes: {{ .Values.argocd.oidc.requestedScopes | toJson }}
+{{- end }}
