@@ -22,6 +22,24 @@ Cluster (0) → Keycloak CR (1) → KeycloakRealmImport (2); the client-setup /
 realm-sync / realm-verify jobs are ArgoCD `PostSync` hooks (weights 6/7/8)
 whose failure fails the Application sync.
 
+## Dex / ArgoCD SSO (Wave 3)
+
+- `charts/dex` (this repo, released as OCI) deploys ONE cluster-local Dex per
+  tenant cluster: per-user SSO via git social login plus OIDC pass-through to
+  Keycloak realm `inari` as confidential client `cluster-<id>-dex`. The
+  inari-operator (W3) renders it per tenant cluster — no Dex Application lives
+  in gitops/; production Dex config (connectors, static clients) comes only
+  from an ESO/Vault-synced Secret (`config.existingSecret`).
+- `platform-config` renders those `cluster-<id>-dex` clients into the realm
+  import from `keycloak.dexClusters[]` (realm-creation placeholder secrets;
+  runtime provisioning/rotation is owned by inari-server, W2).
+- ArgoCD per-user SSO: set `argocd.enabled=true` in platform-config values to
+  point ArgoCD OIDC at the cluster-local Dex issuer and map Keycloak groups
+  (via the Dex `groups` claim) to ArgoCD roles. SSO is then the default login
+  path; static `accounts.*` tokens are a documented break-glass fallback only
+  (`argocd.breakGlass.staticTokenEnabled`, password set out-of-band via the
+  argocd CLI, never stored by the chart).
+
 ## Notes
 
 - `inari-server` / `inari-console` Applications depend on charts published

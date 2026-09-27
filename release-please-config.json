@@ -9,6 +9,11 @@
       "release-type": "helm",
       "component": "platform-config",
       "changelog-path": "CHANGELOG.md"
+    },
+    "charts/dex": {
+      "release-type": "helm",
+      "component": "dex",
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }

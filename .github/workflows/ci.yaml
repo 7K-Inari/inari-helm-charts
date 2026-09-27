@@ -40,10 +40,13 @@ jobs:
           bash -n scripts/*.sh scripts/lib/*.sh
 
       - name: helm lint
-        run: helm lint charts/platform-config
+        run: |
+          helm lint charts/platform-config
+          # dex validates issuer/config at render time; use its ci values
+          helm lint charts/dex -f charts/dex/ci/default-values.yaml
 
       - name: helm unittest
-        run: helm unittest charts/platform-config
+        run: helm unittest charts/platform-config charts/dex
 
       - name: chart-testing lint
         run: ct lint --config ct.yaml
