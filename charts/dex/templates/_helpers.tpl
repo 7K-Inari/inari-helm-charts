@@ -51,10 +51,12 @@ Service account name.
 {{- end -}}
 
 {{/*
-Dex image, pinned to appVersion unless image.tag overrides it.
+Dex image, pinned to appVersion unless image.tag overrides it. Upstream dex
+images are tagged with a leading "v" (ghcr.io/dexidp/dex:vX.Y.Z) while
+Chart.yaml appVersion is bare semver, so the default tag gets the prefix.
 */}}
 {{- define "dex.image" -}}
-{{- printf "%s:%s" .Values.image.repository (.Values.image.tag | default .Chart.AppVersion) -}}
+{{- printf "%s:%s" .Values.image.repository (.Values.image.tag | default (printf "v%s" .Chart.AppVersion)) -}}
 {{- end -}}
 
 {{/*

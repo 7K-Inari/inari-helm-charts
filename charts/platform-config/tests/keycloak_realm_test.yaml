@@ -466,6 +466,28 @@ tests:
       - equal:
           path: spec.realm.clients[?(@.clientId == "cluster-abc123-dex")].optionalClientScopes
           value: [aud-kubernetes]
+  - it: honors an explicitly empty audiences list
+    template: keycloak/realmimport-inari.yaml
+    set:
+      keycloak.dexClusters:
+        - id: abc123
+          secret: inari-dev-dex
+          audiences: []
+    asserts:
+      - equal:
+          path: spec.realm.clients[?(@.clientId == "cluster-abc123-dex")].optionalClientScopes
+          value: []
+  - it: fails on duplicate dexClusters ids
+    template: keycloak/realmimport-inari.yaml
+    set:
+      keycloak.dexClusters:
+        - id: abc123
+          secret: inari-dev-dex
+        - id: abc123
+          secret: inari-dev-dex
+    asserts:
+      - failedTemplate:
+          errorMessage: 'keycloak.dexClusters: duplicate id "abc123" — client ids cluster-<id>-dex must be unique'
   - it: defines audience client scopes for the extension audiences
     template: keycloak/realmimport-inari.yaml
     asserts:

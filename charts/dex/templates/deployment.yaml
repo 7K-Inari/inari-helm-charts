@@ -55,7 +55,13 @@ spec:
             - name: config
               mountPath: /etc/dex
               readOnly: true
+            # Dex writes temp files (config expansion, web assets) to /tmp;
+            # required because the root filesystem is read-only.
+            - name: tmp
+              mountPath: /tmp
       volumes:
+        - name: tmp
+          emptyDir: {}
         - name: config
           {{- if .Values.config.existingSecret }}
           secret:

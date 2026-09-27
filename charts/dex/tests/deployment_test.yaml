@@ -16,12 +16,12 @@ tests:
           of: Deployment
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/dexidp/dex:2.43.1
+          value: ghcr.io/dexidp/dex:v2.43.1
       - equal:
           path: spec.template.spec.containers[0].args
           value: ["dex", "serve", "/etc/dex/config.yaml"]
       - equal:
-          path: spec.template.spec.volumes[0].secret.secretName
+          path: spec.template.spec.volumes[1].secret.secretName
           value: vault-dex-config
       - equal:
           path: spec.template.spec.serviceAccountName
@@ -29,6 +29,19 @@ tests:
       - equal:
           path: spec.template.spec.automountServiceAccountToken
           value: false
+  - it: mounts a writable /tmp emptyDir for the read-only rootfs
+    template: deployment.yaml
+    set:
+      issuer: https://dex.cluster-abc123.example.org
+      config:
+        existingSecret: vault-dex-config
+    asserts:
+      - equal:
+          path: spec.template.spec.volumes[0].emptyDir
+          value: {}
+      - equal:
+          path: spec.template.spec.containers[0].volumeMounts[1].mountPath
+          value: /tmp
   - it: runs restricted (non-root, read-only rootfs, no privileges)
     template: deployment.yaml
     set:
@@ -135,7 +148,7 @@ tests:
         devMode: true
     asserts:
       - equal:
-          path: spec.template.spec.volumes[0].configMap.name
+          path: spec.template.spec.volumes[1].configMap.name
           value: RELEASE-NAME-dex-config
   - it: renders the service on the stable dex port
     template: service.yaml

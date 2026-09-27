@@ -1,3 +1,10 @@
+{{- $clusterIds := list -}}
+{{- range .Values.keycloak.dexClusters -}}
+{{- if has .id $clusterIds -}}
+{{- fail (printf "keycloak.dexClusters: duplicate id %q — client ids cluster-<id>-dex must be unique" .id) -}}
+{{- end -}}
+{{- $clusterIds = append $clusterIds .id -}}
+{{- end -}}
 {
   "realm": "inari",
   "enabled": true,
@@ -259,7 +266,7 @@
         "email",
         "organization"
       ],
-      "optionalClientScopes": [{{- $auds := .audiences | default (list "kubernetes" "inari-extension-gateway") -}}{{- range $i, $a := $auds }}{{ if $i }}, {{ end }}{{ printf "aud-%s" $a | toJson }}{{- end }}]
+      "optionalClientScopes": [{{- $auds := .audiences -}}{{- if not (hasKey . "audiences") -}}{{- $auds = list "kubernetes" "inari-extension-gateway" -}}{{- end -}}{{- range $i, $a := $auds }}{{ if $i }}, {{ end }}{{ printf "aud-%s" $a | toJson }}{{- end }}]
     }{{- end }}
   ]
 }
