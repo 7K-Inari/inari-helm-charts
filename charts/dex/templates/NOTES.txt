@@ -1,0 +1,14 @@
+Dex (cluster-local OIDC issuer) deployed.
+
+  Issuer:  {{ .Values.issuer }}
+  Service: {{ include "dex.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+
+{{- if .Values.config.devMode }}
+
+WARNING: config.devMode=true — mock connector auto-approves every login.
+Kind/dev only. Production must set config.existingSecret to an ESO/Vault-synced
+Secret carrying the full Dex config.yaml (connectors, static clients).
+{{- end }}
+
+Well-known configuration:
+  {{ .Values.issuer }}/.well-known/openid-configuration
