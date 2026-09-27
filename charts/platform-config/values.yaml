@@ -138,6 +138,19 @@ keycloak:
     # dev default; override in real installs (secret stored in
     # inari-keycloak-admin)
     secret: inari-dev-admin-client
+  # Per-tenant-cluster confidential clients cluster-<id>-dex used by the
+  # cluster-local Dex (charts/dex) for OIDC pass-through + token exchange
+  # into extension audiences. Rendered into the realm import; the realm
+  # import applies only at realm creation — runtime provisioning and secret
+  # rotation are owned by inari-server (W2). The secret value here is a
+  # realm-creation placeholder (dev default); real installs sync the actual
+  # secret from Vault/ESO and never commit it.
+  # Each entry:
+  #   id: abc123                 # tenant cluster id -> client cluster-abc123-dex
+  #   secret: inari-dev-dex      # placeholder; rotated by inari-server
+  #   redirectUris: [...]        # optional; default https://dex.cluster-<id>.local/dex/callback
+  #   audiences: [kubernetes, inari-extension-gateway]  # optional client scopes aud-<audience>
+  dexClusters: []
   resources:
     requests:
       cpu: 250m

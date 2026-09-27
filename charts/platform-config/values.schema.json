@@ -151,6 +151,39 @@
             }
           }
         },
+        "dexClusters": {
+          "type": "array",
+          "description": "Per-tenant-cluster confidential clients cluster-<id>-dex for the cluster-local Dex (OIDC pass-through + token exchange into extension audiences). Secrets are realm-creation placeholders; runtime provisioning/rotation is owned by inari-server (W2).",
+          "items": {
+            "type": "object",
+            "required": ["id", "secret"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Tenant cluster id; client id becomes cluster-<id>-dex."
+              },
+              "secret": {
+                "type": "string",
+                "description": "Realm-creation placeholder secret; rotated by inari-server, synced from Vault/ESO in real installs."
+              },
+              "redirectUris": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "audiences": {
+                "type": "array",
+                "description": "Extension audiences attached as optional client scopes aud-<audience> (default: kubernetes, inari-extension-gateway).",
+                "items": {
+                  "type": "string",
+                  "enum": ["inari-server", "inari-agent-gateway", "inari-extension-gateway", "kubernetes"]
+                }
+              }
+            }
+          }
+        },
         "adminClient": {
           "type": "object",
           "description": "Confidential client (service account) used by inari-server / inari-operator for Keycloak Admin REST calls via client_credentials.",

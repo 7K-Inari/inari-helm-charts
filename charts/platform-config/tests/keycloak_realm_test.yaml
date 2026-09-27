@@ -400,3 +400,90 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  # --- cluster-local Dex clients + extension audience scopes ---
+  - it: renders no dex clients by default
+    template: keycloak/realmimport-inari.yaml
+    asserts:
+      - notContains:
+          path: spec.realm.clients
+          content:
+            clientId: cluster-abc123-dex
+  - it: renders a confidential cluster-<id>-dex client per dexClusters entry
+    template: keycloak/realmimport-inari.yaml
+    set:
+      keycloak.dexClusters:
+        - id: abc123
+          secret: inari-dev-dex
+        - id: def456
+          secret: inari-dev-dex
+    asserts:
+      - equal:
+          path: spec.realm.clients[?(@.clientId == "cluster-abc123-dex")].publicClient
+          value: false
+      - equal:
+          path: spec.realm.clients[?(@.clientId == "cluster-abc123-dex")].clientAuthenticatorType
+          value: client-secret
+      - equal:
+          path: spec.realm.clients[?(@.clientId == "cluster-abc123-dex")].secret
+          value: inari-dev-dex
+      - equal:
+          path: spec.realm.clients[?(@.clientId == "cluster-abc123-dex")].serviceAccountsEnabled
+          value: true
+      - equal:
+          path: spec.realm.clients[?(@.clientId == "cluster-abc123-dex")].attributes["standard.token.exchange.enabled"]
+          value: "true"
+      - equal:
+          path: spec.realm.clients[?(@.clientId == "cluster-def456-dex")].enabled
+          value: true
+  - it: attaches the default extension audiences as optional client scopes
+    template: keycloak/realmimport-inari.yaml
+    set:
+      keycloak.dexClusters:
+        - id: abc123
+          secret: inari-dev-dex
+    asserts:
+      - equal:
+          path: spec.realm.clients[?(@.clientId == "cluster-abc123-dex")].optionalClientScopes
+          value: [aud-kubernetes, aud-inari-extension-gateway]
+      - contains:
+          path: spec.realm.clients[?(@.clientId == "cluster-abc123-dex")].defaultClientScopes
+          content: organization
+  - it: honors explicit redirect URIs and audiences
+    template: keycloak/realmimport-inari.yaml
+    set:
+      keycloak.dexClusters:
+        - id: abc123
+          secret: inari-dev-dex
+          redirectUris:
+            - https://dex.cluster-abc123.example.org/dex/callback
+          audiences:
+            - kubernetes
+    asserts:
+      - contains:
+          path: spec.realm.clients[?(@.clientId == "cluster-abc123-dex")].redirectUris
+          content: https://dex.cluster-abc123.example.org/dex/callback
+      - equal:
+          path: spec.realm.clients[?(@.clientId == "cluster-abc123-dex")].optionalClientScopes
+          value: [aud-kubernetes]
+  - it: defines audience client scopes for the extension audiences
+    template: keycloak/realmimport-inari.yaml
+    asserts:
+      - equal:
+          path: spec.realm.clientScopes[?(@.name == "aud-inari-agent-gateway")].protocol
+          value: openid-connect
+      - equal:
+          path: spec.realm.clientScopes[?(@.name == "aud-inari-extension-gateway")].protocol
+          value: openid-connect
+      - equal:
+          path: spec.realm.clientScopes[?(@.name == "aud-kubernetes")].protocol
+          value: openid-connect
+      - equal:
+          path: spec.realm.clientScopes[?(@.name == "aud-kubernetes")].protocolMappers[0].config["included.custom.audience"]
+          value: kubernetes
+      - equal:
+          path: spec.realm.clientScopes[?(@.name == "aud-inari-extension-gateway")].protocolMappers[0].config["included.custom.audience"]
+          value: inari-extension-gateway
+      - equal:
+          path: spec.realm.clientScopes[?(@.name == "aud-inari-agent-gateway")].protocolMappers[0].config["included.custom.audience"]
+          value: inari-agent-gateway
