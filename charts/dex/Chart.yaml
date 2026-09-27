@@ -7,8 +7,8 @@ description: >-
   reconciled by the inari-operator (W3); published as an OCI chart from
   oci://ghcr.io/7k-inari/inari-helm-charts/charts.
 type: application
-version: 0.1.0 # x-release-please-version
-appVersion: 2.43.1 # x-release-please-version
+version: 0.1.0  # x-release-please-version
+appVersion: 2.43.1  # x-release-please-version
 keywords:
   - inari
   - oidc
