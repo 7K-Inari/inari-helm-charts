@@ -175,10 +175,10 @@
               },
               "audiences": {
                 "type": "array",
-                "description": "Extension audiences attached as optional client scopes aud-<audience> (default: kubernetes, inari-extension-gateway).",
+                "description": "Extension audiences attached as optional client scopes aud-<audience> (default: kubernetes, inari-extension-gateway). Must match a realm client scope aud-<audience> defined in files/realm-inari.json; inari-server is deliberately excluded (audience separation: hub API tokens are minted directly by Keycloak, never via a tenant-cluster Dex).",
                 "items": {
                   "type": "string",
-                  "enum": ["inari-server", "inari-agent-gateway", "inari-extension-gateway", "kubernetes"]
+                  "enum": ["inari-agent-gateway", "inari-extension-gateway", "kubernetes"]
                 }
               }
             }
