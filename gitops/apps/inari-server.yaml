@@ -1,6 +1,7 @@
-# inari-server — OCI chart released from the inari-server repo (chart move
-# handled by a separate task; until published this Application stays
-# OutOfSync/Degraded and bootstrap treats it as optional).
+# inari-server — OCI chart released from this repo (charts/inari-server,
+# moved from the inari-server repo) into the org-level OCI namespace.
+# targetRevision pins the first centrally-released chart version; stays
+# OutOfSync until that release is published (bootstrap treats it as optional).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -11,9 +12,9 @@ metadata:
 spec:
   project: inari
   source:
-    repoURL: ghcr.io/7k-inari/inari-server/charts
+    repoURL: ghcr.io/7k-inari/charts
     chart: inari-server
-    targetRevision: 0.1.5
+    targetRevision: 0.2.0
     helm:
       releaseName: inari-server
       values: |
@@ -45,7 +46,9 @@ spec:
           - name: INARI_AGENT_IMAGE_REPO
             value: "ghcr.io/7k-inari/inari-agent"
           - name: INARI_AGENT_IMAGE_TAG
-            value: "0.3.0"
+            # Must stay within the inari-platform chart's agent.supportedRange
+            # (charts/inari-platform values; ConfigMap inari-agent-compat).
+            value: "0.5.1"
   destination:
     server: https://kubernetes.default.svc
     namespace: inari
