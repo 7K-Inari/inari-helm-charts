@@ -1,4 +1,4 @@
-CHART_DIR := charts/platform-config
+CHART_DIR := charts/inari-platform
 CHART_DIRS := $(wildcard charts/*)
 GITOPS_DIR := gitops
 BACKUP_DIR ?= ./backups

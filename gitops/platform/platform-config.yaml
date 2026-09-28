@@ -1,6 +1,8 @@
 # Platform glue: CNPG Cluster, db secrets, Keycloak instance + realm glue.
-# Sourced from this repo (helm chart at charts/platform-config) so e2e always
-# tests the working tree; switch to the OCI source below for real installs.
+# Sourced from this repo (helm chart at charts/inari-platform, chart name
+# inari-platform) so e2e always tests the working tree; switch to the OCI
+# source below for real installs. The Application/release keep the legacy
+# name platform-config so existing installs are not recreated.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -11,12 +13,12 @@ metadata:
 spec:
   project: inari
   source:
-    repoURL: https://github.com/7K-Inari/inari-helm-charts.git
+    repoURL: https://github.com/7K-Inari/inari-release-bundle.git
     targetRevision: HEAD
-    path: charts/platform-config
+    path: charts/inari-platform
     helm:
       releaseName: platform-config
-      # Mirrors charts/platform-config/values-dev.yaml (kind overrides).
+      # Mirrors charts/inari-platform/values-dev.yaml (kind overrides).
       values: |
         postgresql:
           instances: 1

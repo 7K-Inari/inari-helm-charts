@@ -54,7 +54,7 @@ jobs:
 
       - name: Install platform-config with helm (git path)
         run: |
-          helm upgrade --install platform-config ./charts/platform-config \
+          helm upgrade --install platform-config ./charts/inari-platform \
             --namespace inari --create-namespace \
             --wait --timeout 15m \
             --set postgresql.storageSize=1Gi \
