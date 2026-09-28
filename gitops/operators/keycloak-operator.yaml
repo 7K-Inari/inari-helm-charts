@@ -9,7 +9,7 @@ metadata:
 spec:
   project: inari
   source:
-    repoURL: https://github.com/7K-Inari/inari-helm-charts.git
+    repoURL: https://github.com/7K-Inari/inari-release-bundle.git
     targetRevision: HEAD
     path: gitops/operators/keycloak-operator
   destination:
