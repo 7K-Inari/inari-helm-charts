@@ -76,5 +76,10 @@ git tag v9.9.9-edge.deadbeef  # prerelease tags must be ignored
 check "simple mode latest stable tag + patch" "1.2.4-edge.0123456" \
   "$("$script" .)"
 
+# --- case 5: no manifest, no tags -> 0.1.0 ---------------------------------
+git tag -d v1.2.0 v1.2.3 v9.9.9-edge.deadbeef > /dev/null
+check "unversioned repo starts at 0.1.0" "0.1.0-edge.0123456" \
+  "$("$script" . 2>/dev/null)"
+
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
