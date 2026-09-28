@@ -1,5 +1,8 @@
-# NATS (JetStream) — internal event bus. Values mirror the old umbrella
-# nats: subchart section + values-dev.yaml overrides.
+# NATS (JetStream) — internal event bus (ADR-0014). Obligatory: inari-server
+# refuses to boot without it (outbox relay → stream INARI_OUTBOX, per-handler
+# durable consumer groups). 3-node cluster (JetStream meta-group quorum,
+# R=3 streams) mirroring inari-server's e2e/nats-values.yaml; the
+# StatefulSet scales 1→3 online and the meta group expands in place.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -18,12 +21,22 @@ spec:
       values: |
         fullnameOverride: nats
         config:
+          cluster:
+            enabled: true
+            replicas: 3 # JetStream meta group + R=3 streams need 3 nodes
           jetstream:
             enabled: true
             fileStore:
               enabled: true
               pvc:
-                size: 1Gi
+                size: 1Gi # per-pod volumeClaimTemplate
+        podTemplate:
+          topologySpreadConstraints:
+            # Soft spread: multi-node clusters spread the 3 pods across
+            # hosts; single-node dev clusters still schedule all three.
+            kubernetes.io/hostname:
+              maxSkew: 1
+              whenUnsatisfiable: ScheduleAnyway
   destination:
     server: https://kubernetes.default.svc
     namespace: inari

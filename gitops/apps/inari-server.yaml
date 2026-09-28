@@ -17,6 +17,14 @@ spec:
     helm:
       releaseName: inari-server
       values: |
+        # Event bus (ADR-0014): external 3-node NATS from
+        # gitops/platform/nats.yaml (sync wave 1 < 3), chart subchart off.
+        # NOTE: targetRevision above must point at a chart release that
+        # includes NATS support before this block syncs.
+        nats:
+          enabled: false
+          url: nats://nats:4222
+          streamReplicas: 3
         gateway:
           name: internet-gateway
           namespace: istio
