@@ -1,0 +1,88 @@
+name: chart-sync
+
+# Receives appversion-bump dispatches from component repos (inari-server,
+# inari-ui) after their release pipelines publish, and bumps the moved chart's
+# appVersion (plus inari-console's values.yaml bundle.tag) so the chart
+# releases in lockstep with the component. The commit uses a fix() type so
+# release-please proposes a chart patch release carrying the new appVersion.
+#
+# Uses RELEASE_PLEASE_TOKEN: a GITHUB_TOKEN push would not re-trigger
+# release-please.yml (GitHub anti-recursion rule).
+on:
+  repository_dispatch:
+    types: [appversion-bump]
+  workflow_dispatch:
+    # Manual repair path: same effect as a dispatch, e.g.
+    #   gh workflow run chart-sync.yml -f chart=inari-server -f version=3.1.0
+    inputs:
+      chart:
+        description: 'Chart name (inari-server or inari-console)'
+        required: true
+        type: string
+      version:
+        description: 'Released component version, e.g. 3.1.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chart-sync
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Resolve inputs
+        id: in
+        run: |
+          chart="${{ github.event_name == 'workflow_dispatch' && inputs.chart || github.event.client_payload.chart }}"
+          version="${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.client_payload.version }}"
+          version="${version#v}"
+          case "$chart" in
+            inari-server|inari-console) ;;
+            *) echo "::error::unknown chart '$chart' (expected inari-server or inari-console)"; exit 1 ;;
+          esac
+          echo "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::bad version '$version'"; exit 1; }
+          echo "chart=$chart" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Bump appVersion (+ bundle.tag for inari-console)
+        id: bump
+        env:
+          CHART: ${{ steps.in.outputs.chart }}
+          VERSION: ${{ steps.in.outputs.version }}
+        run: |
+          set -euo pipefail
+          chart_yaml="charts/$CHART/Chart.yaml"
+          current="$(grep -E '^appVersion:' "$chart_yaml" | awk '{print $2}' | tr -d '"')"
+          if [ "$current" = "$VERSION" ]; then
+            echo "appVersion already $VERSION — no-op"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sed -i "s/^appVersion:.*/appVersion: $VERSION/" "$chart_yaml"
+          if [ "$CHART" = "inari-console" ]; then
+            # Keep the bundle tag pinned to the same UI release.
+            sed -i "/^bundle:/,/^[a-z]/ s/^  tag:.*/  tag: $VERSION/" charts/inari-console/values.yaml
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          CHART: ${{ steps.in.outputs.chart }}
+          VERSION: ${{ steps.in.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "charts/$CHART/Chart.yaml"
+          [ "$CHART" = "inari-console" ] && git add charts/inari-console/values.yaml
+          git commit -m "fix($CHART): bump appVersion to v$VERSION"
+          git push origin main
