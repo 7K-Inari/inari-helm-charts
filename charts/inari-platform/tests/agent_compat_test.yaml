@@ -1,0 +1,31 @@
+suite: agent compatibility declaration
+templates:
+  - agent-compat-configmap.yaml
+tests:
+  - it: renders the inari-agent-compat ConfigMap with the declared values
+    asserts:
+      - equal:
+          path: kind
+          value: ConfigMap
+      - equal:
+          path: metadata.name
+          value: inari-agent-compat
+      - equal:
+          path: data.supportedRange
+          value: ">=0.5.0 <0.6.0"
+      - equal:
+          path: data.recommended
+          value: "0.5.1"
+
+  - it: honors overridden agent values
+    set:
+      agent:
+        supportedRange: ">=0.6.0 <0.7.0"
+        recommended: "0.6.2"
+    asserts:
+      - equal:
+          path: data.supportedRange
+          value: ">=0.6.0 <0.7.0"
+      - equal:
+          path: data.recommended
+          value: "0.6.2"

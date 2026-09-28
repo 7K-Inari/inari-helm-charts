@@ -1,0 +1,15 @@
+{{- if not .Values.agent.supportedRange }}
+{{- fail "agent.supportedRange must not be empty — declare the inari-agent versions this platform release supports" }}
+{{- end }}
+# Machine-readable declaration of the inari-agent versions this platform
+# release supports. Consumed by inari-server (install/upgrade
+# recommendations); keep agent.supportedRange honest via PR review.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inari-agent-compat
+  labels:
+    {{- include "platform-config.componentLabels" (dict "root" . "component" "agent-compat") | nindent 4 }}
+data:
+  supportedRange: {{ .Values.agent.supportedRange | quote }}
+  recommended: {{ .Values.agent.recommended | quote }}
