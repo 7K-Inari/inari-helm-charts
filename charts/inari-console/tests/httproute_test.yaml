@@ -1,0 +1,97 @@
+suite: gateway api httproute (no ingress, no gateway CR)
+release:
+  name: inari-console
+templates:
+  - httproute.yaml
+tests:
+  - it: renders no httproute by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders the console httproute against the existing gateway
+    set:
+      gateway:
+        name: main
+        namespace: gateways
+        sectionName: https
+      route:
+        enabled: true
+        hostnames:
+          - console.example.org
+    asserts:
+      - hasDocuments:
+          count: 1
+      - isKind:
+          of: HTTPRoute
+      - equal:
+          path: apiVersion
+          value: gateway.networking.k8s.io/v1
+      - equal:
+          path: spec.parentRefs[0].name
+          value: main
+      - equal:
+          path: spec.parentRefs[0].namespace
+          value: gateways
+      - equal:
+          path: spec.parentRefs[0].sectionName
+          value: https
+      - equal:
+          path: spec.hostnames
+          value: ["console.example.org"]
+      - equal:
+          path: spec.rules[0].backendRefs[0].name
+          value: inari-console
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 80
+
+  - it: renders the console httproute with annotations and pathPrefix
+    set:
+      gateway.name: main
+      route:
+        enabled: true
+        hostnames:
+          - inari.example.org
+        pathPrefix: /
+        annotations:
+          external-dns.alpha.kubernetes.io/cloudflare-proxied: "true"
+    asserts:
+      - hasDocuments:
+          count: 1
+      - equal:
+          path: metadata.annotations["external-dns.alpha.kubernetes.io/cloudflare-proxied"]
+          value: "true"
+      - equal:
+          path: spec.hostnames
+          value: ["inari.example.org"]
+      - equal:
+          path: spec.rules[0].matches[0].path.type
+          value: PathPrefix
+      - equal:
+          path: spec.rules[0].matches[0].path.value
+          value: /
+      - equal:
+          path: spec.rules[0].backendRefs[0].name
+          value: inari-console
+
+  - it: omits namespace, sectionName and hostnames when empty
+    set:
+      gateway.name: main
+      route.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - notExists:
+          path: spec.parentRefs[0].namespace
+      - notExists:
+          path: spec.parentRefs[0].sectionName
+      - notExists:
+          path: spec.hostnames
+
+  - it: fails when the route is enabled without gateway.name
+    set:
+      route.enabled: true
+    asserts:
+      - failedTemplate:
+          errorMessage: gateway.name is required when a route is enabled — the chart does not create a Gateway; point gateway.name at the Gateway you have already deployed
