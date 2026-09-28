@@ -64,5 +64,17 @@ else
   check "unknown path exits non-zero" "non-zero" "non-zero"
 fi
 
+# --- case 4: no manifest (simple mode) -> latest stable tag + patch --------
+rm .release-please-manifest.json
+git init -q .
+git config user.email t@t && git config user.name t
+git commit -q --allow-empty -m init
+git tag v1.2.0
+git commit -q --allow-empty -m more
+git tag v1.2.3
+git tag v9.9.9-edge.deadbeef  # prerelease tags must be ignored
+check "simple mode latest stable tag + patch" "1.2.4-edge.0123456" \
+  "$("$script" .)"
+
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
