@@ -58,21 +58,10 @@ jobs:
         env:
           CHART: ${{ steps.in.outputs.chart }}
           VERSION: ${{ steps.in.outputs.version }}
-        run: |
-          set -euo pipefail
-          chart_yaml="charts/$CHART/Chart.yaml"
-          current="$(grep -E '^appVersion:' "$chart_yaml" | awk '{print $2}' | tr -d '"')"
-          if [ "$current" = "$VERSION" ]; then
-            echo "appVersion already $VERSION — no-op"
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          sed -i "s/^appVersion:.*/appVersion: $VERSION/" "$chart_yaml"
-          if [ "$CHART" = "inari-console" ]; then
-            # Keep the bundle tag pinned to the same UI release.
-            sed -i "/^bundle:/,/^[a-z]/ s/^  tag:.*/  tag: $VERSION/" charts/inari-console/values.yaml
-          fi
-          echo "changed=true" >> "$GITHUB_OUTPUT"
+        # Edit logic lives in scripts/chart-sync-bump.sh (unit-tested in
+        # scripts/tests/chart-sync-bump_test.sh); it appends changed=... to
+        # GITHUB_OUTPUT itself.
+        run: scripts/chart-sync-bump.sh "$CHART" "$VERSION"
 
       - name: Commit and push
         if: steps.bump.outputs.changed == 'true'

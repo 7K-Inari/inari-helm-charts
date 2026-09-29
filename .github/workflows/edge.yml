@@ -106,11 +106,15 @@ jobs:
         run: |
           name="$(basename "$CHART_PATH")"
           tag="${name}-v${EDGE_VERSION}"
-          gh release create "$tag" \
-            --prerelease \
-            --target "$GITHUB_SHA" \
-            --title "$name $EDGE_VERSION" \
-            --notes "Edge build of chart \`$name\` from ${GITHUB_SHA}. OCI: \`oci://ghcr.io/7k-inari/charts/${name}:${EDGE_VERSION}\`. Latest edge channel: the moving \`edge\` tag. Superseded by the next stable \`${name}-vX.Y.Z\` release."
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "prerelease $tag already exists — skipping create (workflow rerun)"
+          else
+            gh release create "$tag" \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "$name $EDGE_VERSION" \
+              --notes "Edge build of chart \`$name\` from ${GITHUB_SHA}. OCI: \`oci://ghcr.io/7k-inari/charts/${name}:${EDGE_VERSION}\`. Latest edge channel: the moving \`edge\` tag. Superseded by the next stable \`${name}-vX.Y.Z\` release."
+          fi
 
   channel:
     needs: [resolve, publish]
