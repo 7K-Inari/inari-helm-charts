@@ -45,10 +45,6 @@ spec:
             value: "https://inari-gw.7kgroup.org"
           - name: INARI_AGENT_IMAGE_REPO
             value: "ghcr.io/7k-inari/inari-agent"
-          - name: INARI_AGENT_IMAGE_TAG
-            # Must stay within the inari-platform chart's agent.supportedRange
-            # (charts/inari-platform values; ConfigMap inari-agent-compat).
-            value: "0.5.1"
   destination:
     server: https://kubernetes.default.svc
     namespace: inari

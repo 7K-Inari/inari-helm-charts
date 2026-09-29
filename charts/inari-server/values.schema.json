@@ -134,6 +134,12 @@
       }
     },
     "extraEnv": { "type": "array" },
+    "agent": {
+      "type": "object",
+      "properties": {
+        "floatLatest": { "type": "boolean" }
+      }
+    },
     "vault": {
       "type": "object",
       "properties": {

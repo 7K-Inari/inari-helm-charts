@@ -134,6 +134,23 @@ spec:
                   key: {{ .Values.vault.tokenSecret.tokenKey }}
             {{- end }}
             {{- end }}
+            # inari-agent compatibility declared by the inari-platform chart
+            # (ConfigMap inari-agent-compat). Optional: platforms without the
+            # platform chart keep the server's legacy N/N-1 fallback.
+            - name: INARI_AGENT_SUPPORTED_RANGE
+              valueFrom:
+                configMapKeyRef:
+                  name: inari-agent-compat
+                  key: supportedRange
+                  optional: true
+            - name: INARI_AGENT_RECOMMENDED_VERSION
+              valueFrom:
+                configMapKeyRef:
+                  name: inari-agent-compat
+                  key: recommended
+                  optional: true
+            - name: INARI_AGENT_FLOAT_LATEST
+              value: {{ .Values.agent.floatLatest | quote }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
