@@ -1,10 +1,11 @@
 name: edge
 
 # Per-merge edge releases: every push to main publishes each chart at
-# <pending-version>-edge.<shortsha> to the org OCI namespace and cuts a
-# per-chart GitHub prerelease. Stable releases are untouched — release.yaml
-# owns those. Skipped when the push is itself a release merge (stable
-# publishes cover that commit).
+# <pending-version>-<shortsha> to the org OCI namespace, cuts a per-chart
+# GitHub prerelease, and moves the `edge` channel tag/release to the latest
+# merge. Stable releases are untouched — release.yaml owns those. Skipped
+# when the push is itself a release merge (stable publishes cover that
+# commit).
 on:
   push:
     branches: [main]
@@ -107,5 +108,31 @@ jobs:
           tag="${name}-v${EDGE_VERSION}"
           gh release create "$tag" \
             --prerelease \
+            --target "$GITHUB_SHA" \
             --title "$name $EDGE_VERSION" \
-            --notes "Edge build of chart \`$name\` from ${GITHUB_SHA}. OCI: \`oci://ghcr.io/7k-inari/charts/${name}:${EDGE_VERSION}\`. Superseded by the next stable \`${name}-vX.Y.Z\` release."
+            --notes "Edge build of chart \`$name\` from ${GITHUB_SHA}. OCI: \`oci://ghcr.io/7k-inari/charts/${name}:${EDGE_VERSION}\`. Latest edge channel: the moving \`edge\` tag. Superseded by the next stable \`${name}-vX.Y.Z\` release."
+
+  channel:
+    needs: [resolve, publish]
+    if: always() && needs.publish.result != 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Move the edge channel tag + release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHARTS: ${{ needs.resolve.outputs.matrix }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f edge "$GITHUB_SHA"
+          git push -f origin refs/tags/edge
+          list="$(jq -r '.[] | "- \(.path | sub("charts/"; "")): oci://ghcr.io/7k-inari/charts/\(.path | sub("charts/"; "")):\(.version)"' <<< "$CHARTS")"
+          title="edge (${GITHUB_SHA:0:7})"
+          notes="$(printf 'Latest edge build from %s.\n\nCharts:\n%s' "$GITHUB_SHA" "$list")"
+          if gh release view edge > /dev/null 2>&1; then
+            gh release edit edge --prerelease --title "$title" --notes "$notes"
+          else
+            gh release create edge --prerelease --target "$GITHUB_SHA" --title "$title" --notes "$notes"
+          fi

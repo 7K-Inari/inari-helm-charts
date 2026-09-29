@@ -20,9 +20,9 @@ version range (`agent.supportedRange`/`agent.recommended`, rendered into the
 `inari-agent-compat` ConfigMap).
 
 Every merge to `main` also cuts edge releases: per-chart OCI tags and GitHub
-prereleases at `<pending-version>-edge.<shortsha>` (see
-`.github/workflows/edge.yml`). Stable releases are human-gated via the
-release-please Release PR.
+prereleases at `<pending-version>-<shortsha>`, plus the moving `edge`
+channel tag/release (see `.github/workflows/edge.yml`). Stable releases are
+human-gated via the release-please Release PR.
 
 Part of the **Inari** multi-tenant Internal Developer Platform (GitHub org `7K-Inari`).
 Canonical architecture & development plan: [inari-docs/docs/architecture/inari-platform-plan.md](https://github.com/7K-Inari/inari-docs/blob/main/docs/architecture/inari-platform-plan.md)
