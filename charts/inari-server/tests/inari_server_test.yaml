@@ -90,6 +90,42 @@ tests:
           path: spec.template.spec.containers[0].env
           content:
             name: INARI_VAULT_ADDR
+  - it: wires the inari-agent-compat ConfigMap as optional env vars
+    template: deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: INARI_AGENT_SUPPORTED_RANGE
+            valueFrom:
+              configMapKeyRef:
+                name: inari-agent-compat
+                key: supportedRange
+                optional: true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: INARI_AGENT_RECOMMENDED_VERSION
+            valueFrom:
+              configMapKeyRef:
+                name: inari-agent-compat
+                key: recommended
+                optional: true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: INARI_AGENT_FLOAT_LATEST
+            value: "false"
+  - it: renders the agent float-latest escape hatch
+    template: deployment.yaml
+    set:
+      agent.floatLatest: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: INARI_AGENT_FLOAT_LATEST
+            value: "true"
   - it: renders Vault env with the token sourced from a secret
     template: deployment.yaml
     set:
