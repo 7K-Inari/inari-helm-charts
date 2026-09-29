@@ -15,6 +15,9 @@ spec:
     - "https://openfga.github.io/helm-charts"
     - "https://raw.githubusercontent.com/keycloak/keycloak-k8s-resources/*"
     - "https://github.com/7K-Inari/inari-release-bundle.git"
+    # Pre-rename name; ArgoCD apps point here until the rename lands.
+    # Remove after cut-over.
+    - "https://github.com/7K-Inari/inari-helm-charts.git"
   destinations:
     - server: "https://kubernetes.default.svc"
       namespace: "*"
