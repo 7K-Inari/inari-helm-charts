@@ -1,0 +1,50 @@
+# DEV ONLY (kind): cluster-local Dex from the official dexidp chart with an
+# inline mock-connector config — the replacement for the deleted charts/dex
+# `config.devMode`. Production never uses inline `config`: the operator
+# renders per-tenant-cluster Applications with `configSecret.create: false`
+# against an ESO/Vault-synced Secret.
+#
+# Not applied by bootstrap.sh — apply manually when a local tenant cluster
+# needs a Dex: kubectl apply -f gitops/dev/
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dex-dev
+  namespace: argocd
+spec:
+  project: inari
+  source:
+    repoURL: https://charts.dexidp.io
+    chart: dex
+    targetRevision: 0.25.2
+    helm:
+      values: |
+        fullnameOverride: dex-dev
+        config:
+          issuer: http://dex-dev.dex.svc.cluster.local:5556/dex
+          storage:
+            type: memory
+          web:
+            http: 0.0.0.0:5556
+          oauth2:
+            skipApprovalScreen: true
+          enablePasswordDB: false
+          connectors:
+            - type: mockCallback
+              id: mock
+              name: Dev Mock Login
+          staticClients:
+            - id: argocd
+              name: ArgoCD (dev)
+              secret: inari-dev-argocd-dex
+              redirectURIs:
+                - http://localhost:8080/auth/callback
+                - http://argocd-server.argocd.svc:8080/auth/callback
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dex
+  syncPolicy:
+    automated:
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

@@ -42,15 +42,13 @@ jobs:
       - name: helm lint
         run: |
           helm lint charts/inari-platform
-          # dex validates issuer/config at render time; use its ci values
-          helm lint charts/dex -f charts/dex/ci/default-values.yaml
           # inari-server has subchart deps (redis, nats) that must resolve first
           helm dependency build charts/inari-server
           helm lint charts/inari-server
           helm lint charts/inari-console
 
       - name: helm unittest
-        run: helm unittest charts/inari-platform charts/dex charts/inari-server charts/inari-console
+        run: helm unittest charts/inari-platform charts/inari-server charts/inari-console
 
       - name: chart-testing lint
         run: ct lint --config ct.yaml

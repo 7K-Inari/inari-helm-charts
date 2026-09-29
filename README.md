@@ -1,8 +1,8 @@
 # inari-release-bundle
 
 Release bundle for the Inari platform: the core Helm charts
-(`charts/inari-platform`, `charts/inari-server`, `charts/inari-console`,
-`charts/dex`), GitOps composition and end-to-end testing for the platform
+(`charts/inari-platform`, `charts/inari-server`, `charts/inari-console`),
+GitOps composition and end-to-end testing for the platform
 cluster (ArgoCD Application definitions in `gitops/`), day-0 bootstrap and
 backup/restore/DR tooling (plan §6 #10, §9 M0).
 
@@ -36,7 +36,6 @@ Canonical architecture & development plan: [inari-docs/docs/architecture/inari-p
   as ArgoCD PostSync hooks), inari-agent compatibility declaration.
 - `charts/inari-server`, `charts/inari-console` — control-plane API server
   and web console charts (moved from the component repos).
-- `charts/dex` — cluster-local Dex OIDC issuer for tenant clusters.
 - `scripts/` — day-0 bootstrap, backup/restore, DR drill.
 - The `inari-agent` and `inari-operator` charts stay in their component
   repos and publish to the same org-level OCI namespace.
