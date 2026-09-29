@@ -114,7 +114,7 @@ jobs:
 
   channel:
     needs: [resolve, publish]
-    if: always() && needs.publish.result != 'failure'
+    if: always() && needs.resolve.outputs.matrix != '' && needs.resolve.outputs.matrix != '[]' && needs.publish.result != 'failure'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
