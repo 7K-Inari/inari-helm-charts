@@ -1,0 +1,83 @@
+suite: deployment bundle init container
+release:
+  name: inari-console
+templates:
+  - deployment.yaml
+tests:
+  - it: pulls the pinned bundle ref from values, never latest
+    set:
+      bundle:
+        repository: ghcr.io/7k-inari/inari-ui-bundle
+        tag: 2.0.0
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: bundle
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: BUNDLE
+            value: ghcr.io/7k-inari/inari-ui-bundle:2.0.0
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: oras pull "\$BUNDLE" -o /work
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: ":latest"
+
+  - it: never defaults the bundle tag to latest
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].env[?(@.name == "BUNDLE")].value
+          pattern: '^ghcr\.io/7k-inari/inari-ui-bundle:.+$'
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[0].env[?(@.name == "BUNDLE")].value
+          pattern: ":latest"
+
+  - it: renders apiBaseUrl from values into the config.js env
+    set:
+      apiBaseUrl: https://api.example.org/v1
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: API_BASE_URL
+            value: https://api.example.org/v1
+
+  - it: uses the chart default apiBaseUrl when unset
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[0].env
+          content:
+            name: API_BASE_URL
+            value: /api/v1
+
+  - it: writes config.js with apiBaseUrl into the shared html volume
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: 'window\.__INARI_CONFIG__ = \{ keycloakUrl: "%s", keycloakRealm: "%s", keycloakClientId: "%s", apiBaseUrl: "%s" \};'
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: '"\$KEYCLOAK_CLIENT_ID" "\$API_BASE_URL"'
+      - matchRegex:
+          path: spec.template.spec.initContainers[0].command[2]
+          pattern: '> /html/config\.js'
+      - contains:
+          path: spec.template.spec.initContainers[0].volumeMounts
+          content:
+            name: html
+            mountPath: /html
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: html
+            mountPath: /usr/share/nginx/html
+
+  - it: pins the oras puller image tag
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].image
+          value: ghcr.io/oras-project/oras:v1.3.0

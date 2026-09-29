@@ -1,0 +1,80 @@
+# replicaCount: number of nginx console replicas. The console is stateless
+# (static SPA, no sticky sessions), so scale freely.
+# PRODUCTION POSTURE (99.9% availability): set replicaCount: 2 and opt in to
+# the affinity / topologySpreadConstraints blocks below so replicas spread
+# across nodes and zones. With replicaCount >= 2 a PodDisruptionBudget
+# (pdb.minAvailable) is rendered automatically.
+replicaCount: 1
+bundle:
+  repository: ghcr.io/7k-inari/inari-ui-bundle
+  tag: 2.0.0
+keycloakUrl: http://localhost:8080
+keycloakRealm: inari
+keycloakClientId: inari-ui
+apiBaseUrl: /api/v1
+nginx:
+  corsOrigins:
+    - https://example.org
+    - https://auth.example.org
+image:
+  orasRepository: ghcr.io/oras-project/oras
+  orasTag: v1.3.0
+  nginxRepository: nginx
+  nginxTag: 1.27-alpine
+# livenessProbe for the nginx container: restart the pod if nginx wedges.
+# The readiness probe (GET / on the nginx port) is fixed; override this map to
+# tune or replace the liveness check (rendered verbatim into the container).
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  periodSeconds: 10
+  timeoutSeconds: 2
+  failureThreshold: 3
+# pdb: PodDisruptionBudget, rendered only when replicaCount >= 2 so voluntary
+# disruptions (node drains, upgrades) keep at least minAvailable pods serving.
+pdb:
+  enabled: true
+  minAvailable: 1
+# affinity / topologySpreadConstraints: opt-in pod spreading. Recommended
+# production posture (with replicaCount: 2) — spread replicas across nodes and
+# zones; no anti-affinity is applied unless you set these:
+# affinity:
+#   podAntiAffinity:
+#     preferredDuringSchedulingIgnoredDuringExecution:
+#       - weight: 100
+#         podAffinityTerm:
+#           labelSelector:
+#             matchLabels:
+#               app.kubernetes.io/name: inari-console
+#               app.kubernetes.io/instance: inari-console
+#           topologyKey: kubernetes.io/hostname
+# topologySpreadConstraints:
+#   - maxSkew: 1
+#     topologyKey: topology.kubernetes.io/zone
+#     whenUnsatisfiable: ScheduleAnyway
+#     labelSelector:
+#       matchLabels:
+#         app.kubernetes.io/name: inari-console
+#         app.kubernetes.io/instance: inari-console
+affinity: {}
+topologySpreadConstraints: []
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+service:
+  type: ClusterIP
+  port: 80
+gateway:
+  name: ''
+  namespace: ''
+  sectionName: ''
+route:
+  enabled: false
+  hostnames: []
+  pathPrefix: ''
+  annotations: {}

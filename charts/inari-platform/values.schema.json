@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/chart",
-  "title": "platform-config values",
+  "title": "inari-platform values",
   "type": "object",
   "properties": {
     "gateway": {
@@ -141,7 +141,7 @@
         },
         "realmSync": {
           "type": "object",
-          "description": "Idempotent realm sync via keycloak-config-cli on every ArgoCD sync — keeps the realm (clients, mappers, users) in line with the chart across syncs, unlike the one-shot KeycloakRealmImport.",
+          "description": "Idempotent realm sync via keycloak-config-cli on every ArgoCD sync \u2014 keeps the realm (clients, mappers, users) in line with the chart across syncs, unlike the one-shot KeycloakRealmImport.",
           "properties": {
             "enabled": {
               "type": "boolean"
@@ -156,7 +156,10 @@
           "description": "Per-tenant-cluster confidential clients cluster-<id>-dex for the cluster-local Dex (OIDC pass-through + token exchange into extension audiences). Secrets are realm-creation placeholders; runtime provisioning/rotation is owned by inari-server (W2).",
           "items": {
             "type": "object",
-            "required": ["id", "secret"],
+            "required": [
+              "id",
+              "secret"
+            ],
             "properties": {
               "id": {
                 "type": "string",
@@ -178,7 +181,11 @@
                 "description": "Extension audiences attached as optional client scopes aud-<audience> (default: kubernetes, inari-extension-gateway). Must match a realm client scope aud-<audience> defined in files/realm-inari.json; inari-server is deliberately excluded (audience separation: hub API tokens are minted directly by Keycloak, never via a tenant-cluster Dex).",
                 "items": {
                   "type": "string",
-                  "enum": ["inari-agent-gateway", "inari-extension-gateway", "kubernetes"]
+                  "enum": [
+                    "inari-agent-gateway",
+                    "inari-extension-gateway",
+                    "kubernetes"
+                  ]
                 }
               }
             }
@@ -236,7 +243,9 @@
                   "default": "client-secret"
                 }
               },
-              "required": ["name"]
+              "required": [
+                "name"
+              ]
             },
             "requestedScopes": {
               "type": "array",
@@ -286,6 +295,26 @@
           "description": "Add argocd.argoproj.io/sync-options=Prune=false and helm.sh/resource-policy=keep to the CNPG Cluster so a prune/uninstall does not wipe the database."
         }
       }
+    },
+    "agent": {
+      "type": "object",
+      "description": "inari-agent compatibility declaration rendered into the inari-agent-compat ConfigMap.",
+      "properties": {
+        "supportedRange": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Semver range of supported inari-agent versions."
+        },
+        "recommended": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact agent version recommended for install/upgrade."
+        }
+      },
+      "required": [
+        "supportedRange",
+        "recommended"
+      ]
     }
   },
   "allOf": [

@@ -9,6 +9,8 @@ metadata:
 spec:
   project: inari
   source:
+    # TODO: flip to inari-release-bundle.git once the repo rename lands
+    # (GitHub redirects git/HTTP, but ArgoCD repo entries should use the canonical name).
     repoURL: https://github.com/7K-Inari/inari-helm-charts.git
     targetRevision: HEAD
     path: gitops/operators/keycloak-operator

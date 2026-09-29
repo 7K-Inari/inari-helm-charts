@@ -17,7 +17,7 @@
   "duplicateEmailsAllowed": false,
   "internationalizationEnabled": false,
   "attributes": {
-    "org.inari/managed-by": "inari-helm-charts"
+    "org.inari/managed-by": "inari-release-bundle"
   },
   "defaultDefaultClientScopes": [
     "basic",

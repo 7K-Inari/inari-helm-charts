@@ -1,6 +1,7 @@
-# inari-console — OCI chart released from the inari-ui repo (chart moved out
-# of this repo; publishes flip the GHCR package to public so this pulls
-# anonymously).
+# inari-console — OCI chart released from this repo (charts/inari-console,
+# moved back from the inari-ui repo) into the org-level OCI namespace.
+# targetRevision pins the first centrally-released chart version; stays
+# OutOfSync until that release is published.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -11,9 +12,9 @@ metadata:
 spec:
   project: inari
   source:
-    repoURL: ghcr.io/7k-inari/inari-ui/charts
+    repoURL: ghcr.io/7k-inari/charts
     chart: inari-console
-    targetRevision: 0.3.0
+    targetRevision: 0.4.0
     helm:
       releaseName: inari-console
       values: |

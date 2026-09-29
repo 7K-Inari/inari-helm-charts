@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "inari-console.fullname" . }}-nginx
+  labels:
+    {{- include "inari-console.labels" . | nindent 4 }}
+data:
+  default.conf: |
+    map $http_origin $cors_origin {
+      default "";
+      "~^https?://localhost(:[0-9]+)?$" $http_origin;
+      {{- range .Values.nginx.corsOrigins }}
+      "{{ . }}" $http_origin;
+      {{- end }}
+    }
+
+    server {
+      listen 8080;
+      root /usr/share/nginx/html;
+      index index.html;
+
+      # ==========================================
+      # Hashed Vite assets: immutable, must 404 when stale
+      # ==========================================
+      # A missing asset must NOT fall back to /index.html: a stale cached
+      # index.html referencing old asset hashes would get HTML served as
+      # text/html for a JS module URL and white-screen the app. Assets are
+      # content-hashed, so they can be cached forever.
+      location /assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+
+        try_files $uri =404;
+      }
+
+      # ==========================================
+      # SPA catch-all
+      # ==========================================
+      # index.html is the entrypoint: it must always be revalidated so a
+      # post-deploy reload can never pair a cached entrypoint with asset
+      # hashes that no longer exist (blank white page).
+      location / {
+        add_header Cache-Control "no-cache" always;
+
+        # Preflight handler (valid here because it's inside location)
+        if ($request_method = 'OPTIONS') {
+          add_header 'Access-Control-Allow-Origin' $cors_origin always;
+          add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE, PATCH' always;
+          add_header 'Access-Control-Allow-Headers' 'DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+          add_header 'Access-Control-Allow-Credentials' 'true' always;
+          add_header 'Access-Control-Max-Age' 1728000 always;
+          add_header 'Content-Length' 0;
+          return 204;
+        }
+
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS, PUT, DELETE, PATCH' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
+
+        try_files $uri $uri/ /index.html;
+      }
+
+      # ==========================================
+      # Config.js with no-cache + CORS
+      # ==========================================
+      location = /config.js {
+        add_header 'Access-Control-Allow-Origin' $cors_origin always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        add_header Cache-Control "no-store" always;
+
+        try_files $uri =404;
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "inari-console.fullname" . }}
+  labels:
+    {{- include "inari-console.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "inari-console.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http

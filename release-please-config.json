@@ -5,9 +5,19 @@
   "include-v-in-tag": false,
   "tag-separator": "-v",
   "packages": {
-    "charts/platform-config": {
+    "charts/inari-platform": {
       "release-type": "helm",
-      "component": "platform-config",
+      "component": "inari-platform",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "charts/inari-server": {
+      "release-type": "helm",
+      "component": "inari-server",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "charts/inari-console": {
+      "release-type": "helm",
+      "component": "inari-console",
       "changelog-path": "CHANGELOG.md"
     },
     "charts/dex": {

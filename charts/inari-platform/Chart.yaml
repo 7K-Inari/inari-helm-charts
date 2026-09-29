@@ -1,10 +1,11 @@
 apiVersion: v2
-name: platform-config
+name: inari-platform
 description: >-
   Platform glue for the Inari GitOps stack: CNPG PostgreSQL Cluster + database
   secrets, Keycloak instance, realm "inari" import/sync/verify (ArgoCD PostSync
-  hooks). Installed via ArgoCD from gitops/; consumed as an OCI chart from
-  oci://ghcr.io/7k-inari/inari-helm-charts/charts.
+  hooks), and the declared inari-agent compatibility range. Installed via
+  ArgoCD from gitops/; consumed as an OCI chart from
+  oci://ghcr.io/7k-inari/charts.
 type: application
 version: 0.4.0  # x-release-please-version
 appVersion: 0.2.0  # x-release-please-version
@@ -12,9 +13,9 @@ keywords:
   - inari
   - idp
   - platform
-home: https://github.com/7K-Inari/inari-helm-charts
+home: https://github.com/7K-Inari/inari-release-bundle
 sources:
-  - https://github.com/7K-Inari/inari-helm-charts
+  - https://github.com/7K-Inari/inari-release-bundle
 maintainers:
   - name: 7K-Inari
     url: https://github.com/7K-Inari

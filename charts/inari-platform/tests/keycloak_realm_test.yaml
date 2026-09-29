@@ -391,7 +391,7 @@ tests:
           value: Job
       - equal:
           path: metadata.name
-          value: RELEASE-NAME-platform-config-realm-sync
+          value: RELEASE-NAME-inari-platform-realm-sync
         documentSelector:
           path: kind
           value: ConfigMap

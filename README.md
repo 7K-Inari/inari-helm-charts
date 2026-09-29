@@ -1,11 +1,28 @@
-# inari-helm-charts
+# inari-release-bundle
 
-GitOps composition and end-to-end testing for the Inari platform cluster:
-ArgoCD Application definitions (`gitops/`), the `platform-config` glue chart
-(`charts/platform-config`), day-0 bootstrap and backup/restore/DR tooling
-(plan §6 #10, §9 M0).
+Release bundle for the Inari platform: the core Helm charts
+(`charts/inari-platform`, `charts/inari-server`, `charts/inari-console`,
+`charts/dex`), GitOps composition and end-to-end testing for the platform
+cluster (ArgoCD Application definitions in `gitops/`), day-0 bootstrap and
+backup/restore/DR tooling (plan §6 #10, §9 M0).
 
 Stack: ArgoCD (App-of-Apps-style sync waves) + Helm charts released as OCI.
+
+All charts publish to the org-level OCI namespace
+`oci://ghcr.io/7k-inari/charts` (shared with the inari-agent and
+inari-operator charts, which stay in their own repos). Charts version
+independently via release-please; `charts/inari-server` and
+`charts/inari-console` get their `appVersion` bumped automatically by the
+component release pipelines (see `.github/workflows/chart-sync.yml`) so the
+charts release in lockstep with inari-server/inari-ui. The
+`charts/inari-platform` chart also declares the supported inari-agent
+version range (`agent.supportedRange`/`agent.recommended`, rendered into the
+`inari-agent-compat` ConfigMap).
+
+Every merge to `main` also cuts edge releases: per-chart OCI tags and GitHub
+prereleases at `<pending-version>-<shortsha>`, plus the moving `edge`
+channel tag/release (see `.github/workflows/edge.yml`). Stable releases are
+human-gated via the release-please Release PR.
 
 Part of the **Inari** multi-tenant Internal Developer Platform (GitHub org `7K-Inari`).
 Canonical architecture & development plan: [inari-docs/docs/architecture/inari-platform-plan.md](https://github.com/7K-Inari/inari-docs/blob/main/docs/architecture/inari-platform-plan.md)
@@ -14,13 +31,15 @@ Canonical architecture & development plan: [inari-docs/docs/architecture/inari-p
 
 - `gitops/` — ArgoCD Applications composing the platform from component
   charts (see [gitops/README.md](gitops/README.md) for the sync-wave table).
-- `charts/platform-config` — the only chart in this repo: CNPG PostgreSQL
-  Cluster + db secrets, Keycloak instance and realm `inari` glue (realm
-  import/sync/verify as ArgoCD PostSync hooks). Published to
-  `oci://ghcr.io/7k-inari/inari-helm-charts/charts` via release-please.
+- `charts/inari-platform` — platform glue: CNPG PostgreSQL Cluster + db
+  secrets, Keycloak instance and realm `inari` glue (realm import/sync/verify
+  as ArgoCD PostSync hooks), inari-agent compatibility declaration.
+- `charts/inari-server`, `charts/inari-console` — control-plane API server
+  and web console charts (moved from the component repos).
+- `charts/dex` — cluster-local Dex OIDC issuer for tenant clusters.
 - `scripts/` — day-0 bootstrap, backup/restore, DR drill.
-- Component charts (`inari-operator`, `inari-operator-crds`, `inari-server`,
-  `inari-console`) live in and are released from their component repos.
+- The `inari-agent` and `inari-operator` charts stay in their component
+  repos and publish to the same org-level OCI namespace.
 
 ## Quickstart (day-0 bootstrap)
 
@@ -34,7 +53,7 @@ make dev-down   # tear down
 The composed stack provides Keycloak (realm `inari`), PostgreSQL
 (CloudNativePG), NATS (JetStream) and OpenFGA, plus `inari-operator`,
 `inari-server` and `inari-console` Applications once their charts are
-published by the component repos.
+published.
 
 ## Backup / restore / DR drill
 
@@ -53,5 +72,8 @@ make lint    # helm lint + chart-testing + gitops manifest validation
 make test    # helm-unittest
 ```
 
-`charts/platform-config` is published as an OCI artifact to
-`oci://ghcr.io/7k-inari/inari-helm-charts/charts` by `release.yaml` (release-please tags).
+All charts are published as OCI artifacts to `oci://ghcr.io/7k-inari/charts`
+by `release.yaml` (release-please tags `<chart>-vX.Y.Z`). The old
+repo-scoped namespace `oci://ghcr.io/7k-inari/inari-helm-charts/charts` is
+deprecated; existing pins keep working but new releases only go to the
+org-level namespace.

@@ -11,11 +11,11 @@ cluster and applies these manifests.
 |-----:|-------------|--------|
 | -2 | `cnpg` | helm `cloudnative-pg` 0.29.0 (CloudNativePG operator) |
 | -2 | `keycloak-operator` | kustomize `gitops/operators/keycloak-operator` (upstream 26.3.2 + cluster-wide patch) |
-| -1 | `inari-operator-crds` | OCI `ghcr.io/7k-inari/inari-operator/charts/inari-operator-crds` |
-| 0 | `platform-config` | `charts/platform-config` in this repo (CNPG Cluster, `inari-db` secrets, Keycloak CR, realm import + PostSync jobs) |
+| -1 | `inari-operator-crds` | OCI `ghcr.io/7k-inari/charts/inari-operator-crds` |
+| 0 | `platform-config` | `charts/inari-platform` in this repo (chart name `inari-platform`: CNPG Cluster, `inari-db` secrets, Keycloak CR, realm import + PostSync jobs) |
 | 1 | `nats`, `openfga` | upstream helm charts (values lifted from the old umbrella) |
-| 2 | `inari-operator` | OCI `ghcr.io/7k-inari/inari-operator/charts/inari-operator` |
-| 3 | `inari-server`, `inari-console` | OCI `ghcr.io/7k-inari/<repo>/charts/...` |
+| 2 | `inari-operator` | OCI `ghcr.io/7k-inari/charts/inari-operator` |
+| 3 | `inari-server`, `inari-console` | OCI `ghcr.io/7k-inari/charts/...` (charts live in and release from this repo) |
 
 Inside `platform-config`, per-resource sync waves order secrets (-1) → CNPG
 Cluster (0) → Keycloak CR (1) → KeycloakRealmImport (2); the client-setup /
@@ -30,10 +30,10 @@ whose failure fails the Application sync.
   inari-operator (W3) renders it per tenant cluster — no Dex Application lives
   in gitops/; production Dex config (connectors, static clients) comes only
   from an ESO/Vault-synced Secret (`config.existingSecret`).
-- `platform-config` renders those `cluster-<id>-dex` clients into the realm
-  import from `keycloak.dexClusters[]` (realm-creation placeholder secrets;
-  runtime provisioning/rotation is owned by inari-server, W2).
-- ArgoCD per-user SSO: set `argocd.enabled=true` in platform-config values to
+- The `inari-platform` chart renders those `cluster-<id>-dex` clients into
+  the realm import from `keycloak.dexClusters[]` (realm-creation placeholder
+  secrets; runtime provisioning/rotation is owned by inari-server, W2).
+- ArgoCD per-user SSO: set `argocd.enabled=true` in inari-platform values to
   point ArgoCD OIDC at the cluster-local Dex issuer and map Keycloak groups
   (via the Dex `groups` claim) to ArgoCD roles. SSO is then the default login
   path; static `accounts.*` tokens are a documented break-glass fallback only
@@ -42,10 +42,11 @@ whose failure fails the Application sync.
 
 ## Notes
 
-- `inari-server` / `inari-console` Applications depend on charts published
-  by their component repos; bootstrap treats them as optional until the
-  chart-move tasks land (the old umbrella deployed them as disabled stubs
-  anyway).
+- `inari-server` / `inari-console` charts live in this repo
+  (`charts/inari-server`, `charts/inari-console`) and release to the
+  org-level OCI namespace `oci://ghcr.io/7k-inari/charts`. Their
+  Applications pin the first centrally-released versions and stay OutOfSync
+  until those publish; bootstrap treats them as optional meanwhile.
 - `dataProtection.keepOnUninstall=true` in platform-config marks the CNPG
   Cluster `Prune=false` — enable it for any environment with data.
 - Dev passwords live inline in these dev Applications (kind only); real

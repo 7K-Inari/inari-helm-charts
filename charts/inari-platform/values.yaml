@@ -218,3 +218,17 @@ dataProtection:
   # helm.sh/resource-policy=keep) to the CNPG Cluster: an ArgoCD prune or
   # helm uninstall then leaves the database (and its PVCs) in place.
   keepOnUninstall: false
+
+# ---------------------------------------------------------------------------
+# inari-agent compatibility — the platform's declared support window for
+# tenant-cluster agents. Rendered into the inari-agent-compat ConfigMap;
+# inari-server reads it (via chart env wiring) to decide which agent version
+# to recommend for install/upgrade. supportedRange is a human-maintained
+# compatibility claim (bump via PR); recommended is the default pin and can
+# be auto-bumped by the inari-agent release pipeline.
+# ---------------------------------------------------------------------------
+agent:
+  # Semver range of supported inari-agent versions (e.g. ">=0.5.0 <0.6.0").
+  supportedRange: ">=0.5.0 <0.6.0"
+  # Exact agent version the platform recommends for new installs/upgrades.
+  recommended: "0.5.1"

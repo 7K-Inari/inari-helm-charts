@@ -25,6 +25,12 @@ Components:
 NATS, OpenFGA, inari-operator, inari-server and inari-console are separate
 ArgoCD Applications composed on top of this chart (see gitops/).
 
+inari-agent compatibility (ConfigMap inari-agent-compat):
+  supported range:  {{ .Values.agent.supportedRange }}
+  recommended:      {{ .Values.agent.recommended }}
+  inari-server uses these to recommend agent installs/upgrades; update
+  agent.supportedRange via PR when compatibility changes.
+
 {{- if not .Values.keycloak.enabled }}
 External Keycloak notes:
   - The realm "inari" must exist on the external instance.
