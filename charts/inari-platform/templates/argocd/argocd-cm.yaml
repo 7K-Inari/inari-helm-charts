@@ -1,6 +1,6 @@
 {{- if .Values.argocd.enabled }}
 {{- if not .Values.argocd.oidc.issuerUrl }}
-{{- fail "argocd.oidc.issuerUrl is required when argocd.enabled=true — point it at this cluster's Dex issuer (charts/dex)" }}
+{{- fail "argocd.oidc.issuerUrl is required when argocd.enabled=true — point it at this cluster's Dex issuer (official dexidp chart)" }}
 {{- end }}
 {{- if not .Values.argocd.oidc.clientSecretRef.name }}
 {{- fail "argocd.oidc.clientSecretRef.name is required when argocd.enabled=true — reference an ESO/Vault-synced Secret holding the Dex static-client secret" }}

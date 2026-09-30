@@ -53,7 +53,7 @@ tests:
             name: vault-argocd-dex
     asserts:
       - failedTemplate:
-          errorMessage: argocd.oidc.issuerUrl is required when argocd.enabled=true — point it at this cluster's Dex issuer (charts/dex)
+          errorMessage: argocd.oidc.issuerUrl is required when argocd.enabled=true — point it at this cluster's Dex issuer (official dexidp chart)
   - it: fails without a client secret reference
     template: argocd/argocd-cm.yaml
     set:
