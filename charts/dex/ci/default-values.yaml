@@ -1,4 +1,0 @@
-# chart-testing lint/install values: kind-only mock connector.
-issuer: https://dex.cluster-ci.local
-config:
-  devMode: true

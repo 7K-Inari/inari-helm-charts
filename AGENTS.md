@@ -1,6 +1,6 @@
 # inari-release-bundle — Agent Guide
 
-Release bundle for Inari: the core Helm charts (charts/inari-platform, charts/inari-server, charts/inari-console, charts/dex), ArgoCD Application definitions (gitops/), day-0 bootstrap (plan §6 #10, §9 M0). Formerly inari-helm-charts.
+Release bundle for Inari: the core Helm charts (charts/inari-platform, charts/inari-server, charts/inari-console), ArgoCD Application definitions (gitops/), day-0 bootstrap (plan §6 #10, §9 M0). Formerly inari-helm-charts.
 
 Stack: ArgoCD sync waves over Helm charts (chart releases as OCI)
 

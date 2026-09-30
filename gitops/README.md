@@ -24,21 +24,28 @@ whose failure fails the Application sync.
 
 ## Dex / ArgoCD SSO (Wave 3)
 
-- `charts/dex` (this repo, released as OCI) deploys ONE cluster-local Dex per
-  tenant cluster: per-user SSO via git social login plus OIDC pass-through to
-  Keycloak realm `inari` as confidential client `cluster-<id>-dex`. The
-  inari-operator (W3) renders it per tenant cluster — no Dex Application lives
-  in gitops/; production Dex config (connectors, static clients) comes only
-  from an ESO/Vault-synced Secret (`config.existingSecret`).
+- Dex deploys ONE cluster-local instance per tenant cluster from the
+  **official dexidp chart** (`https://charts.dexidp.io`, chart `dex`): OIDC
+  pass-through to Keycloak realm `inari` as confidential client
+  `cluster-<id>-dex`. The inari-operator renders a single-source ArgoCD
+  `Application` per tenant cluster (pinned `targetRevision`) — no Dex
+  Application lives in gitops/ and no dex chart is published from this repo.
+  Production Dex config (connectors, static clients) comes only from an
+  ESO/Vault-synced Secret (`configSecret.create: false` +
+  `configSecret.name`); the operator also renders the tenant ArgoCD OIDC/RBAC
+  baseline (`argocd-cm`, `argocd-rbac-cm`) alongside it.
 - The `inari-platform` chart renders those `cluster-<id>-dex` clients into
   the realm import from `keycloak.dexClusters[]` (realm-creation placeholder
   secrets; runtime provisioning/rotation is owned by inari-server, W2).
-- ArgoCD per-user SSO: set `argocd.enabled=true` in inari-platform values to
-  point ArgoCD OIDC at the cluster-local Dex issuer and map Keycloak groups
-  (via the Dex `groups` claim) to ArgoCD roles. SSO is then the default login
-  path; static `accounts.*` tokens are a documented break-glass fallback only
-  (`argocd.breakGlass.staticTokenEnabled`, password set out-of-band via the
-  argocd CLI, never stored by the chart).
+- ArgoCD per-user SSO maps Keycloak groups (via the Dex `groups` claim) to
+  ArgoCD roles through the operator-rendered `argocd-rbac-cm` (fail-closed
+  `policy.default`). Static `accounts.inari-breakglass` stays as the
+  documented break-glass fallback (password set out-of-band via the argocd
+  CLI, never stored by the operator).
+- Dev/kind: `gitops/dev/dex.yaml` is a standalone Application for the
+  upstream chart with an inline mock-connector config (no secrets needed).
+  Apply it manually (`kubectl apply -f gitops/dev/`) when a local tenant
+  cluster needs a Dex; it is never applied by bootstrap.sh.
 
 ## Notes
 

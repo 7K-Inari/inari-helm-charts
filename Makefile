@@ -22,7 +22,6 @@ dr-drill: ## Provision a fresh kind cluster, restore BACKUP and verify: make dr-
 
 lint: ## helm lint + chart-testing lint + gitops manifest validation
 	helm lint $(CHART_DIR)
-	helm lint charts/dex -f charts/dex/ci/default-values.yaml
 	ct lint --config ct.yaml
 	$(MAKE) lint-gitops
 

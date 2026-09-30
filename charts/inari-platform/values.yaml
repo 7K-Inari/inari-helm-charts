@@ -139,7 +139,7 @@ keycloak:
     # inari-keycloak-admin)
     secret: inari-dev-admin-client
   # Per-tenant-cluster confidential clients cluster-<id>-dex used by the
-  # cluster-local Dex (charts/dex) for OIDC pass-through + token exchange
+  # cluster-local Dex (official dexidp chart) for OIDC pass-through + token exchange
   # into extension audiences. Rendered into the realm import; the realm
   # import applies only at realm creation — runtime provisioning and secret
   # rotation are owned by inari-server (W2). The secret value here is a
@@ -164,7 +164,7 @@ keycloak:
     annotations: {}
 
 # ---------------------------------------------------------------------------
-# ArgoCD — per-user SSO via the cluster-local Dex (charts/dex) as the DEFAULT
+# ArgoCD — per-user SSO via the cluster-local Dex (official dexidp chart) as the DEFAULT
 # login path when enabled. Static accounts.* tokens are a documented
 # legacy/break-glass fallback only (see breakGlass below). Renders argocd-cm /
 # argocd-rbac-cm against a manifest-installed ArgoCD (scripts/install-argocd.sh)
