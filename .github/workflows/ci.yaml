@@ -181,7 +181,7 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ! scripts/dr-drill.sh "$RUNNER_TEMP"/backups/inari-backup-*.tgz; then
-            kubectl -n inari get pods -o wide
+            kubectl -n inari get pods -o wide || true
             for p in $(kubectl -n inari get pods -o jsonpath='{.items[*].metadata.name}'); do
               echo "=== logs $p ==="; kubectl -n inari logs "$p" --all-containers --tail=50 || true
             done
