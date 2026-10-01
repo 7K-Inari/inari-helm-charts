@@ -9,7 +9,44 @@ permissions:
   # ArgoCD pulls the inari-* OCI charts from ghcr.io during bootstrap.
   packages: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Builds the shared prerequisites (kind cluster + private operator image)
+  # concurrently with lint-test so bootstrap never waits on lint.
+  prep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.12.0
+
+      # The operator image package is private; anonymous pulls in kind fail.
+      # Pre-pull with GITHUB_TOKEN and side-load it (pullPolicy IfNotPresent).
+      - name: Preload private operator image into kind
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/preload-operator-image.sh chart-testing
+
+      # The image can't cross job runners directly; export it as an artifact
+      # for install-test to load into its own kind cluster.
+      - name: Export preloaded operator image
+        run: |
+          IMAGE_ID=$(docker images ghcr.io/7k-inari/inari-operator -q | head -1)
+          test -n "$IMAGE_ID"
+          docker save "$IMAGE_ID" -o "$RUNNER_TEMP/operator-image.tar"
+
+      - name: Upload operator image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: operator-image
+          path: ${{ runner.temp }}/operator-image.tar
+          retention-days: 1
+
   lint-test:
     runs-on: ubuntu-latest
     steps:
@@ -65,20 +102,29 @@ jobs:
 
   install-test:
     runs-on: ubuntu-latest
-    needs: lint-test
+    timeout-minutes: 45
+    needs: [prep, lint-test]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download operator image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: operator-image
+          path: ${{ runner.temp }}
 
       - name: Create kind cluster
         uses: helm/kind-action@v1.12.0
 
-      # The operator image package is private; anonymous pulls in kind fail.
-      # Pre-pull with GITHUB_TOKEN and side-load it (pullPolicy IfNotPresent).
-      - name: Preload private operator image into kind
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: scripts/preload-operator-image.sh chart-testing
+      - name: Load preloaded operator image into kind
+        run: |
+          docker load -i "$RUNNER_TEMP/operator-image.tar"
+          IMAGE_TAG=$(docker images ghcr.io/7k-inari/inari-operator --format '{{.Tag}}' | head -1)
+          test -n "$IMAGE_TAG"
+          kind load docker-image "ghcr.io/7k-inari/inari-operator:${IMAGE_TAG}" --name chart-testing
+
+      - name: Install GNU jq
+        run: sudo apt-get update -y && sudo apt-get install -y jq
 
       - name: Bootstrap platform stack (ArgoCD + gitops apps)
         env:
@@ -124,31 +170,6 @@ jobs:
           sleep 10
           kubectl -n argocd wait application/platform-config \
             --for=jsonpath='{.status.health.status}'=Healthy --timeout=600s
-
-  backup-restore-test:
-    runs-on: ubuntu-latest
-    needs: install-test
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install GNU jq
-        run: sudo apt-get update -y && sudo apt-get install -y jq
-
-      - name: Create kind cluster and bootstrap
-        uses: helm/kind-action@v1.12.0
-
-      - name: Preload private operator image into kind
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: scripts/preload-operator-image.sh chart-testing
-
-      - name: Bootstrap platform stack
-        env:
-          GITOPS_TARGET_REVISION: ${{ github.head_ref || github.ref_name }}
-          GHCR_USERNAME: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: KIND_CLUSTER_NAME=chart-testing ./scripts/bootstrap.sh --skip-kind
 
       - name: Backup
         run: scripts/backup.sh "$RUNNER_TEMP/backups"
