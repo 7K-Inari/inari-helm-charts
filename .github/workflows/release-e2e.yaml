@@ -44,6 +44,16 @@ on:
           of pulling the published ghcr.io image (unreleased combos).
         required: false
         default: ""
+      image-tag:
+        description: >-
+          Optional published ghcr.io image tag override for the server under
+          test (e.g. "edge" — the tag the inari-server edge workflow gives
+          the latest main merge). Repair/debug path: edge images are not
+          cosign-signed, so verification is skipped, and the inari-server
+          source checkout moves to `main` so the HA migration-count check
+          matches the image.
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -121,6 +131,7 @@ jobs:
         env:
           CHART_PATH: ${{ github.event.inputs.chart-path || 'charts/inari-server' }}
           BUILD_FROM_REF: ${{ github.event.inputs.build-from-ref }}
+          IMAGE_TAG_OVERRIDE: ${{ github.event.inputs.image-tag }}
         run: |
           set -euo pipefail
           app_version="$(awk '/^appVersion:/ {print $2}' "$CHART_PATH/Chart.yaml" | tr -d '"')"
@@ -131,13 +142,21 @@ jobs:
           server_tag="v${app_version#v}"
           # GHCR image tags are UNPREFIXED (1.8.0), while git tags are
           # v-prefixed (v1.8.0) — verified against the registry.
-          image_tag="${app_version#v}"
+          image_tag="${IMAGE_TAG_OVERRIDE:-${app_version#v}}"
           echo "app-version=$app_version" >> "$GITHUB_OUTPUT"
           echo "server-tag=$server_tag" >> "$GITHUB_OUTPUT"
           echo "image-tag=$image_tag" >> "$GITHUB_OUTPUT"
           # Sentinel "none": empty job outputs are dropped from the needs
           # context, so comparing against '' is unreliable downstream.
           echo "build-from-ref=${BUILD_FROM_REF:-none}" >> "$GITHUB_OUTPUT"
+          # With an image override the golden path's inari-server source
+          # checkout (migrations dir for the HA(c) count) must track the
+          # override — edge tracks the latest main merge.
+          if [ -n "$IMAGE_TAG_OVERRIDE" ]; then
+            echo "server-src-ref=main" >> "$GITHUB_OUTPUT"
+          else
+            echo "server-src-ref=$server_tag" >> "$GITHUB_OUTPUT"
+          fi
           # The Release PR must point at a published server tag.
           if ! git ls-remote --exit-code https://github.com/7K-Inari/inari-server.git "refs/tags/$server_tag" >/dev/null 2>&1; then
             echo "inari-server tag $server_tag does not exist — refuse to gate an unpublished server" >&2
@@ -177,11 +196,11 @@ jobs:
     env:
       IMAGE_REF: ghcr.io/7k-inari/inari-server:${{ needs.resolve.outputs.image-tag }}
     steps:
-      - name: Checkout inari-server at pinned tag (Go suites + migrations dir)
+      - name: Checkout inari-server (Go suites + migrations dir)
         uses: actions/checkout@v4
         with:
           repository: 7K-Inari/inari-server
-          ref: ${{ needs.resolve.outputs.server-tag }}
+          ref: ${{ needs.resolve.outputs.server-src-ref }}
           path: inari-server
 
       - name: Checkout bundle (charts under test)
@@ -234,19 +253,26 @@ jobs:
           go-version-file: inari-server/go.mod
 
       - name: Install cosign
-        if: needs.resolve.outputs.build-from-ref == 'none'
+        if: needs.resolve.outputs.build-from-ref == 'none' && github.event.inputs.image-tag == ''
         uses: sigstore/cosign-installer@v3
 
       - name: Pull and verify published server image
         # Prefer the cosign-signed artifact that actually ships over a
         # rebuild. The pulled image is re-tagged to `inari/server:e2e` —
         # the tag golden-path.sh loads into kind — so no rebuild happens.
+        # cosign verification is skipped for an explicit image-tag override:
+        # the edge workflow signs only the OpenAPI artifact, not the image
+        # (repair/debug path — Release PRs always verify).
         if: needs.resolve.outputs.build-from-ref == 'none'
         run: |
           set -euo pipefail
-          cosign verify "$IMAGE_REF" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity-regexp https://github.com/7K-Inari/inari-server/
+          if [ -z "${{ github.event.inputs.image-tag }}" ]; then
+            cosign verify "$IMAGE_REF" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              --certificate-identity-regexp https://github.com/7K-Inari/inari-server/
+          else
+            echo "image-tag override — skipping cosign verification (edge images are unsigned)"
+          fi
           docker pull "$IMAGE_REF"
           docker tag "$IMAGE_REF" inari/server:e2e
 
