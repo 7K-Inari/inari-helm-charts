@@ -57,6 +57,10 @@
 #       on INARI_GITHUB_APP_ID + INARI_GITHUB_APP_PRIVATE_KEY_FILE.
 set -euo pipefail
 
+log() { printf '\033[1;34m[e2e]\033[0m %s\n' "$*"; }
+die() { printf '\033[1;31m[e2e] %s\033[0m\n' "$*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null || die "missing prerequisite: $1"; }
+
 CLUSTER_NAME="${CLUSTER_NAME:-inari-e2e}"
 SERVER_IMAGE="${SERVER_IMAGE:-inari/server:e2e}"
 AGENT_IMAGE="${AGENT_IMAGE:-inari/agent:e2e}"
@@ -99,9 +103,6 @@ fi
 [ "$CACHE_BACKEND" = "memory" ] || [ "$CACHE_BACKEND" = "redis" ] || \
   die "INARI_E2E_CACHE_BACKEND must be memory or redis (got: $CACHE_BACKEND)"
 
-log() { printf '\033[1;34m[e2e]\033[0m %s\n' "$*"; }
-die() { printf '\033[1;31m[e2e] %s\033[0m\n' "$*" >&2; exit 1; }
-need() { command -v "$1" >/dev/null || die "missing prerequisite: $1"; }
 need docker; need kubectl; need helm; need jq; need kind; need git; need base64; need curl
 
 # Component chart-dir sanity checks (die is defined above; INARI_HA too).
@@ -418,7 +419,7 @@ CONSOLE_INDEX=$(curl -sf -m 10 "http://127.0.0.1:$CONSOLE_PORT/" || true)
 grep -qi "<html" <<<"$CONSOLE_INDEX" \
   || die "console route did not serve the SPA index.html (got: ${CONSOLE_INDEX:0:120})"
 CONSOLE_CONFIG=$(curl -sf -m 10 "http://127.0.0.1:$CONSOLE_PORT/config.js" || true)
-grep -q "\"keycloakUrl\": \"http://$KC_FQDN\"" <<<"$CONSOLE_CONFIG" \
+grep -q "keycloakUrl: \"http://$KC_FQDN\"" <<<"$CONSOLE_CONFIG" \
   || die "console config.js does not point at the Keycloak login (http://$KC_FQDN): $CONSOLE_CONFIG"
 log "console serves the SPA and its login config targets http://$KC_FQDN"
 
