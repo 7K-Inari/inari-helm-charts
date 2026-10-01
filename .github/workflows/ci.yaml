@@ -34,11 +34,12 @@ jobs:
 
       # The image can't cross job runners directly; export it as an artifact
       # for install-test to load into its own kind cluster.
+      # NB: save by repository reference — `docker save <image-id>` strips
+      # repo:tag metadata, and the loaded image would be untagged.
       - name: Export preloaded operator image
         run: |
-          IMAGE_ID=$(docker images ghcr.io/7k-inari/inari-operator -q | head -1)
-          test -n "$IMAGE_ID"
-          docker save "$IMAGE_ID" -o "$RUNNER_TEMP/operator-image.tar"
+          docker images ghcr.io/7k-inari/inari-operator -q | grep -q .
+          docker save ghcr.io/7k-inari/inari-operator -o "$RUNNER_TEMP/operator-image.tar"
 
       - name: Upload operator image artifact
         uses: actions/upload-artifact@v4
@@ -119,7 +120,9 @@ jobs:
       - name: Load preloaded operator image into kind
         run: |
           docker load -i "$RUNNER_TEMP/operator-image.tar"
-          IMAGE_TAG=$(docker images ghcr.io/7k-inari/inari-operator --format '{{.Tag}}' | head -1)
+          # Pick the appVersion tag (not ':latest', which only exists as a
+          # workaround in preload-operator-image.sh); the chart references it.
+          IMAGE_TAG=$(docker images ghcr.io/7k-inari/inari-operator --format '{{.Tag}}' | grep -v '^latest$' | head -1)
           test -n "$IMAGE_TAG"
           kind load docker-image "ghcr.io/7k-inari/inari-operator:${IMAGE_TAG}" --name chart-testing
 
