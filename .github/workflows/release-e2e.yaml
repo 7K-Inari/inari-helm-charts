@@ -322,7 +322,7 @@ jobs:
           sleep 3 # port-forwards need a moment before accepting connections
           E2E_BASE_URL=http://127.0.0.1:18090 \
           E2E_KEYCLOAK_URL=http://127.0.0.1:18091 \
-          E2E_OPENAPI=dist/openapi.yaml \
+          E2E_OPENAPI="${{ github.workspace }}/inari-server/dist/openapi.yaml" \
           go test -tags=e2e ./e2e/ -run TestAPISchemaConformance -count=1 -v
 
       - name: Dump diagnostics on failure
