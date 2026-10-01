@@ -123,7 +123,7 @@ jobs:
           BUILD_FROM_REF: ${{ github.event.inputs.build-from-ref }}
         run: |
           set -euo pipefail
-          app_version="$(awk '/^appVersion:/ {print $2}' "$CHART_PATH/Chart.yaml" | tr -d '"'"'')"
+          app_version="$(awk '/^appVersion:/ {print $2}' "$CHART_PATH/Chart.yaml" | tr -d '"')"
           if [ -z "$app_version" ]; then
             echo "no appVersion found in $CHART_PATH/Chart.yaml" >&2
             exit 1
