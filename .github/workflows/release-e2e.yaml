@@ -106,6 +106,7 @@ jobs:
     outputs:
       app-version: ${{ steps.resolve.outputs.app-version }}
       server-tag: ${{ steps.resolve.outputs.server-tag }}
+      image-tag: ${{ steps.resolve.outputs.image-tag }}
       build-from-ref: ${{ steps.resolve.outputs.build-from-ref }}
     steps:
       - uses: actions/checkout@v4
@@ -125,8 +126,12 @@ jobs:
             exit 1
           fi
           server_tag="v${app_version#v}"
+          # GHCR image tags are UNPREFIXED (1.8.0), while git tags are
+          # v-prefixed (v1.8.0) — verified against the registry.
+          image_tag="${app_version#v}"
           echo "app-version=$app_version" >> "$GITHUB_OUTPUT"
           echo "server-tag=$server_tag" >> "$GITHUB_OUTPUT"
+          echo "image-tag=$image_tag" >> "$GITHUB_OUTPUT"
           # Sentinel "none": empty job outputs are dropped from the needs
           # context, so comparing against '' is unreliable downstream.
           echo "build-from-ref=${BUILD_FROM_REF:-none}" >> "$GITHUB_OUTPUT"
@@ -167,7 +172,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.ha && 60 || 45 }}
     env:
-      IMAGE_REF: ghcr.io/7k-inari/inari-server:${{ needs.resolve.outputs.server-tag }}
+      IMAGE_REF: ghcr.io/7k-inari/inari-server:${{ needs.resolve.outputs.image-tag }}
     steps:
       - name: Checkout inari-server at pinned tag (e2e script source)
         uses: actions/checkout@v4
@@ -244,7 +249,11 @@ jobs:
         # KEEP_CLUSTER=true: the workflow owns teardown (final step) so the
         # diagnostics step still has a cluster to inspect on failure.
         working-directory: inari-server
-        run: HELM_CHARTS_DIR=${{ github.workspace }}/bundle KEEP_CLUSTER=true INARI_HA=${{ matrix.ha }} bash e2e/golden-path.sh
+        # PLATFORM_CHART_DIR: golden-path.sh at older server tags (e.g.
+        # v3.0.0) defaults to charts/platform-config, which was renamed
+        # charts/inari-platform in this repo — pin the new path explicitly
+        # so both old and new script revisions work.
+        run: HELM_CHARTS_DIR=${{ github.workspace }}/bundle PLATFORM_CHART_DIR=${{ github.workspace }}/bundle/charts/inari-platform KEEP_CLUSTER=true INARI_HA=${{ matrix.ha }} bash e2e/golden-path.sh
 
       - name: Dump diagnostics on failure
         if: failure()
