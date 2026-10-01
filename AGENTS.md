@@ -8,6 +8,7 @@ Stack: ArgoCD sync waves over Helm charts (chart releases as OCI)
 - **Day-0 bootstrap: Inari must never require Inari to install** — scripted first-platform-cluster install lives here (§12.1/1).
 - gitops/ composes: Keycloak (realm `inari`), PostgreSQL (CNPG), NATS, OpenFGA via ArgoCD Applications; inari-server/inari-console charts release from this repo; the inari-operator/inari-agent charts stay in their component repos. Everything publishes to the org-level namespace `oci://ghcr.io/7k-inari/charts` (§4.2).
 - Backup/restore runbook coverage: PostgreSQL, OpenFGA store, Keycloak config, NATS — a tested restore is an M0 exit criterion (§9 M0, §12.1/1).
+- `scripts/e2e/` owns the golden-path e2e assets (relocated from inari-server): `golden-path.sh` (kind stack + HA disruption + operator/console smoke assertions), `kubectl-access.sh`, `nats-values.yaml`, and the api-schema Go driver. `.github/workflows/release-e2e.yaml` gates Release PRs with them; the workflow still checks out inari-server at the pinned tag for the Go integration/api-schema suites. Never reintroduce e2e assets into inari-server.
 - Charts published as OCI artifacts; lint + template tests in CI (chart-testing).
 
 ## Conventions
