@@ -1,0 +1,276 @@
+name: release-e2e
+
+# Release-PR gate for the bundle: when release-please opens/updates a
+# Release PR (chart version + appVersion bumps), this workflow proves the
+# bundle releasable before merge:
+#   1. resolve            — read charts/inari-server appVersion, resolve the
+#                           matching inari-server git tag vX.Y.Z.
+#   2. server-integration — run the full `go test -tags=integration` suite
+#                           against that exact tag (the artifact being
+#                           released, not a floating branch).
+#   3. golden-path        — kind-based golden path (HA matrix preserved),
+#                           preferring the published cosign-signed image
+#                           ghcr.io/7k-inari/inari-server:vX.Y.Z over a
+#                           rebuild. The script is reused from the
+#                           inari-server checkout; relocation into this
+#                           repo is a separate later task.
+#
+# Trigger: pull_request on release-please Release PRs only (branch prefix
+# `release-please--` or Chart.yaml/appVersion changes), plus
+# workflow_dispatch as a repair/debug path. Runs on `pull_request` (never
+# `pull_request_target`) with in-repo branches only — release-please
+# branches always live in this repo, so no untrusted checkout ever gets
+# secrets. Fork PRs are hard-skipped.
+#
+# REQUIRED CHECK: once this workflow has a green live run, it becomes a
+# required check on Release PRs. Enabling that is a MANUAL branch-
+# protection/admin step (Settings → Branches → require `release-e2e` on
+# the release-please branches / main); it is intentionally not encoded
+# here.
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      chart-path:
+        description: Chart directory whose appVersion pins the server under test
+        required: true
+        default: charts/inari-server
+      build-from-ref:
+        description: >-
+          Optional inari-server ref/tag to build the e2e image from instead
+          of pulling the published ghcr.io image (unreleased combos).
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect Release PR (or dispatch)
+        id: gate
+        env:
+          EVENT: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "workflow_dispatch — running"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Never run heavy legs against fork PRs (secrets/GITHUB_TOKEN
+          # package pulls are only safe same-repo; release-please branches
+          # are always in-repo anyway).
+          if [ "$HEAD_REPO" != "$REPO" ]; then
+            echo "fork PR ($HEAD_REPO) — skipping"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$HEAD_REF" == release-please--* ]]; then
+            echo "release-please branch $HEAD_REF — running"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Chart.yaml / appVersion changes on an in-repo branch also count.
+          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -q 'charts/.*/Chart.yaml'; then
+            echo "Chart.yaml changes detected — running"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif git diff "$BASE_SHA" "$HEAD_SHA" | grep -qE '^[+-]appVersion:'; then
+            echo "appVersion change detected — running"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "not a Release PR — skipping"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  resolve:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      app-version: ${{ steps.resolve.outputs.app-version }}
+      server-tag: ${{ steps.resolve.outputs.server-tag }}
+      image-tag: ${{ steps.resolve.outputs.image-tag }}
+      build-from-ref: ${{ steps.resolve.outputs.build-from-ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+
+      - name: Resolve server tag from chart appVersion
+        id: resolve
+        env:
+          CHART_PATH: ${{ github.event.inputs.chart-path || 'charts/inari-server' }}
+          BUILD_FROM_REF: ${{ github.event.inputs.build-from-ref }}
+        run: |
+          set -euo pipefail
+          app_version="$(awk '/^appVersion:/ {print $2}' "$CHART_PATH/Chart.yaml" | tr -d '"'"'')"
+          if [ -z "$app_version" ]; then
+            echo "no appVersion found in $CHART_PATH/Chart.yaml" >&2
+            exit 1
+          fi
+          server_tag="v${app_version#v}"
+          # GHCR image tags are UNPREFIXED (1.8.0), while git tags are
+          # v-prefixed (v1.8.0) — verified against the registry.
+          image_tag="${app_version#v}"
+          echo "app-version=$app_version" >> "$GITHUB_OUTPUT"
+          echo "server-tag=$server_tag" >> "$GITHUB_OUTPUT"
+          echo "image-tag=$image_tag" >> "$GITHUB_OUTPUT"
+          # Sentinel "none": empty job outputs are dropped from the needs
+          # context, so comparing against '' is unreliable downstream.
+          echo "build-from-ref=${BUILD_FROM_REF:-none}" >> "$GITHUB_OUTPUT"
+          # The Release PR must point at a published server tag.
+          if ! git ls-remote --exit-code https://github.com/7K-Inari/inari-server.git "refs/tags/$server_tag" >/dev/null 2>&1; then
+            echo "inari-server tag $server_tag does not exist — refuse to gate an unpublished server" >&2
+            exit 1
+          fi
+          echo "resolved inari-server tag: $server_tag"
+
+  server-integration:
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout inari-server at pinned tag
+        uses: actions/checkout@v4
+        with:
+          repository: 7K-Inari/inari-server
+          ref: ${{ needs.resolve.outputs.server-tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Integration suite @ ${{ needs.resolve.outputs.server-tag }}
+        run: go test -tags=integration -count=1 ./...
+
+  golden-path:
+    needs: resolve
+    # Two legs: the default single-replica fast gate, and the HA gate
+    # (INARI_HA=true). Mirrors inari-server's e2e.yaml timeouts.
+    strategy:
+      fail-fast: false
+      matrix:
+        ha: [false, true]
+    name: golden-path (INARI_HA=${{ matrix.ha }})
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.ha && 60 || 45 }}
+    env:
+      IMAGE_REF: ghcr.io/7k-inari/inari-server:${{ needs.resolve.outputs.image-tag }}
+    steps:
+      - name: Checkout inari-server at pinned tag (e2e script source)
+        uses: actions/checkout@v4
+        with:
+          repository: 7K-Inari/inari-server
+          ref: ${{ needs.resolve.outputs.server-tag }}
+          path: inari-server
+
+      - name: Checkout bundle (charts under test)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+          path: bundle
+
+      - name: Resolve matching inari-agent ref
+        id: agent
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          BRANCH="$HEAD_REF"
+          if git ls-remote --exit-code https://github.com/7K-Inari/inari-agent.git "refs/heads/$BRANCH" >/dev/null 2>&1; then
+            echo "ref=$BRANCH" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout inari-agent
+        uses: actions/checkout@v4
+        with:
+          repository: 7K-Inari/inari-agent
+          ref: ${{ steps.agent.outputs.ref }}
+          path: inari-agent
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: inari-server/go.mod
+
+      - name: Install cosign
+        if: needs.resolve.outputs.build-from-ref == 'none'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Pull and verify published server image
+        # Prefer the cosign-signed artifact that actually ships over a
+        # rebuild. The pulled image is re-tagged to `inari/server:e2e` —
+        # the tag golden-path.sh loads into kind — so no rebuild happens.
+        if: needs.resolve.outputs.build-from-ref == 'none'
+        run: |
+          set -euo pipefail
+          cosign verify "$IMAGE_REF" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp https://github.com/7K-Inari/inari-server/
+          docker pull "$IMAGE_REF"
+          docker tag "$IMAGE_REF" inari/server:e2e
+
+      - name: Build server image from ref
+        # Repair path for unreleased combos (workflow_dispatch input).
+        if: needs.resolve.outputs.build-from-ref != 'none'
+        working-directory: inari-server
+        run: |
+          git checkout "${{ needs.resolve.outputs.build-from-ref }}"
+          docker build -f deploy/docker/Dockerfile -t inari/server:e2e .
+
+      - name: Build agent image
+        run: docker build -f inari-agent/Dockerfile -t inari/agent:e2e ./inari-agent
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: inari-e2e
+          wait: 60s
+
+      - name: Run golden path
+        # KEEP_CLUSTER=true: the workflow owns teardown (final step) so the
+        # diagnostics step still has a cluster to inspect on failure.
+        working-directory: inari-server
+        # PLATFORM_CHART_DIR: golden-path.sh at older server tags (e.g.
+        # v3.0.0) defaults to charts/platform-config, which was renamed
+        # charts/inari-platform in this repo — pin the new path explicitly
+        # so both old and new script revisions work.
+        run: HELM_CHARTS_DIR=${{ github.workspace }}/bundle PLATFORM_CHART_DIR=${{ github.workspace }}/bundle/charts/inari-platform KEEP_CLUSTER=true INARI_HA=${{ matrix.ha }} bash e2e/golden-path.sh
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          kubectl config use-context kind-inari-e2e || true
+          kubectl -n inari get pods || true
+          kubectl -n inari logs -l app.kubernetes.io/name=inari-server --prefix --tail=100 || true
+          kubectl -n inari-system logs deployment/inari-agent --tail=100 || true
+          if [ "${{ matrix.ha }}" = "true" ]; then
+            kubectl -n inari get pdb,deployment inari-server -o wide || true
+            PRIMARY=$(kubectl -n inari get cluster.postgresql.cnpg.io/postgresql -o jsonpath='{.status.currentPrimary}' 2>/dev/null || true)
+            if [ -n "$PRIMARY" ]; then
+              URI=$(kubectl -n inari get secret inari-db -o jsonpath='{.data.inari-uri}' | base64 -d)
+              kubectl -n inari exec "$PRIMARY" -c postgres -- psql "$URI" -c 'SELECT name, holder, expires_at FROM leader_leases' || true
+            fi
+          fi
+
+      - name: Delete kind cluster
+        if: always()
+        run: kind delete cluster --name inari-e2e || true
