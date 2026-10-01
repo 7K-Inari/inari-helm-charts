@@ -127,7 +127,9 @@ jobs:
           server_tag="v${app_version#v}"
           echo "app-version=$app_version" >> "$GITHUB_OUTPUT"
           echo "server-tag=$server_tag" >> "$GITHUB_OUTPUT"
-          echo "build-from-ref=$BUILD_FROM_REF" >> "$GITHUB_OUTPUT"
+          # Sentinel "none": empty job outputs are dropped from the needs
+          # context, so comparing against '' is unreliable downstream.
+          echo "build-from-ref=${BUILD_FROM_REF:-none}" >> "$GITHUB_OUTPUT"
           # The Release PR must point at a published server tag.
           if ! git ls-remote --exit-code https://github.com/7K-Inari/inari-server.git "refs/tags/$server_tag" >/dev/null 2>&1; then
             echo "inari-server tag $server_tag does not exist — refuse to gate an unpublished server" >&2
@@ -205,14 +207,14 @@ jobs:
           go-version-file: inari-server/go.mod
 
       - name: Install cosign
-        if: needs.resolve.outputs.build-from-ref == ''
+        if: needs.resolve.outputs.build-from-ref == 'none'
         uses: sigstore/cosign-installer@v3
 
       - name: Pull and verify published server image
         # Prefer the cosign-signed artifact that actually ships over a
         # rebuild. The pulled image is re-tagged to `inari/server:e2e` —
         # the tag golden-path.sh loads into kind — so no rebuild happens.
-        if: needs.resolve.outputs.build-from-ref == ''
+        if: needs.resolve.outputs.build-from-ref == 'none'
         run: |
           set -euo pipefail
           cosign verify "$IMAGE_REF" \
@@ -223,7 +225,7 @@ jobs:
 
       - name: Build server image from ref
         # Repair path for unreleased combos (workflow_dispatch input).
-        if: needs.resolve.outputs.build-from-ref != ''
+        if: needs.resolve.outputs.build-from-ref != 'none'
         working-directory: inari-server
         run: |
           git checkout "${{ needs.resolve.outputs.build-from-ref }}"
