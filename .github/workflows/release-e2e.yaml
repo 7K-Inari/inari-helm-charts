@@ -325,6 +325,60 @@ jobs:
           E2E_OPENAPI="${{ github.workspace }}/inari-server/dist/openapi.yaml" \
           go test -tags=e2e ./e2e/ -run TestAPISchemaConformance -count=1 -v
 
+      - name: Run console UI smoke (Playwright)
+        # Browser-level e2e (run d701e2ba advice): real Keycloak login + the
+        # Access console's RBAC tabs. Two adaptations vs production:
+        #   1. The console's keycloakUrl must be browser-reachable, so it is
+        #      re-set to the port-forward (tokens keep the converged
+        #      service-DNS issuer, which the server accepts).
+        #   2. There is no gateway in kind and the server sends no CORS
+        #      headers, so ui-proxy.mjs merges console + API onto one origin
+        #      (the production topology) for the browser.
+        working-directory: bundle
+        run: |
+          set -euo pipefail
+          KC=http://127.0.0.1:18091
+
+          # Fresh port-forwards (the api-schema step's may have died).
+          pkill -f "kubectl -n inari port-forward" 2>/dev/null || true
+          kubectl -n inari port-forward svc/inari-console 18080:80 >/dev/null 2>&1 &
+          kubectl -n inari port-forward svc/inari-server 18090:8080 >/dev/null 2>&1 &
+          kubectl -n inari port-forward svc/keycloak-service 18091:8080 >/dev/null 2>&1 &
+          sleep 3
+
+          # Allow the browser origin on the realm-imported inari-ui client.
+          SECRET=$(kubectl -n inari get secret inari-keycloak-admin -o jsonpath='{.data.client-secret}' | base64 -d)
+          AT=$(curl -sf "$KC/realms/inari/protocol/openid-connect/token" \
+            -d grant_type=client_credentials -d client_id=inari-platform-admin \
+            -d client_secret="$SECRET" | jq -r .access_token)
+          CID=$(curl -sf -H "Authorization: Bearer $AT" \
+            "$KC/admin/realms/inari/clients?clientId=inari-ui" | jq -r '.[0].id')
+          curl -sf -H "Authorization: Bearer $AT" "$KC/admin/realms/inari/clients/$CID" \
+            | jq '.redirectUris += ["http://127.0.0.1:8080/*"] | .redirectUris |= unique
+                  | .webOrigins += ["http://127.0.0.1:8080"] | .webOrigins |= unique' \
+            | curl -sf -X PUT -H "Authorization: Bearer $AT" -H "Content-Type: application/json" \
+                -d @- "$KC/admin/realms/inari/clients/$CID"
+
+          # Point the SPA's Keycloak URL at the browser-reachable forward.
+          helm upgrade inari-console charts/inari-console --namespace inari \
+            --reuse-values --set keycloakUrl="$KC"
+          kubectl -n inari rollout status deployment/inari-console --timeout=180s
+
+          node scripts/e2e/ui-proxy.mjs &
+          PROXY_PID=$!
+          trap 'kill $PROXY_PID 2>/dev/null || true' EXIT
+          npx -y playwright@1.55.0 install --with-deps chromium
+          node scripts/e2e/ui-smoke.mjs
+
+      - name: Upload UI smoke screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke-screenshots-ha-${{ matrix.ha }}
+          path: /tmp/ui-smoke/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Dump diagnostics on failure
         if: failure()
         run: |
