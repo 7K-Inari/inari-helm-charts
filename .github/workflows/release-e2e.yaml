@@ -11,9 +11,12 @@ name: release-e2e
 #   3. golden-path        — kind-based golden path (HA matrix preserved),
 #                           preferring the published cosign-signed image
 #                           ghcr.io/7k-inari/inari-server:vX.Y.Z over a
-#                           rebuild. The script is reused from the
-#                           inari-server checkout; relocation into this
-#                           repo is a separate later task.
+#                           rebuild. The script lives in this repo
+#                           (scripts/e2e/golden-path.sh); the inari-server
+#                           checkout at the pinned tag is still used for the
+#                           Go test suites and the api-schema e2e driver.
+#                           The stack additionally smoke-tests the
+#                           inari-operator and inari-console charts.
 #
 # Trigger: pull_request on release-please Release PRs only (branch prefix
 # `release-please--` or Chart.yaml/appVersion changes), plus
@@ -39,6 +42,16 @@ on:
         description: >-
           Optional inari-server ref/tag to build the e2e image from instead
           of pulling the published ghcr.io image (unreleased combos).
+        required: false
+        default: ""
+      image-tag:
+        description: >-
+          Optional published ghcr.io image tag override for the server under
+          test (e.g. "edge" — the tag the inari-server edge workflow gives
+          the latest main merge). Repair/debug path: edge images are not
+          cosign-signed, so verification is skipped, and the inari-server
+          source checkout moves to `main` so the HA migration-count check
+          matches the image.
         required: false
         default: ""
 
@@ -118,9 +131,10 @@ jobs:
         env:
           CHART_PATH: ${{ github.event.inputs.chart-path || 'charts/inari-server' }}
           BUILD_FROM_REF: ${{ github.event.inputs.build-from-ref }}
+          IMAGE_TAG_OVERRIDE: ${{ github.event.inputs.image-tag }}
         run: |
           set -euo pipefail
-          app_version="$(awk '/^appVersion:/ {print $2}' "$CHART_PATH/Chart.yaml" | tr -d '"'"'')"
+          app_version="$(awk '/^appVersion:/ {print $2}' "$CHART_PATH/Chart.yaml" | tr -d '"')"
           if [ -z "$app_version" ]; then
             echo "no appVersion found in $CHART_PATH/Chart.yaml" >&2
             exit 1
@@ -128,13 +142,21 @@ jobs:
           server_tag="v${app_version#v}"
           # GHCR image tags are UNPREFIXED (1.8.0), while git tags are
           # v-prefixed (v1.8.0) — verified against the registry.
-          image_tag="${app_version#v}"
+          image_tag="${IMAGE_TAG_OVERRIDE:-${app_version#v}}"
           echo "app-version=$app_version" >> "$GITHUB_OUTPUT"
           echo "server-tag=$server_tag" >> "$GITHUB_OUTPUT"
           echo "image-tag=$image_tag" >> "$GITHUB_OUTPUT"
           # Sentinel "none": empty job outputs are dropped from the needs
           # context, so comparing against '' is unreliable downstream.
           echo "build-from-ref=${BUILD_FROM_REF:-none}" >> "$GITHUB_OUTPUT"
+          # With an image override the golden path's inari-server source
+          # checkout (migrations dir for the HA(c) count) must track the
+          # override — edge tracks the latest main merge.
+          if [ -n "$IMAGE_TAG_OVERRIDE" ]; then
+            echo "server-src-ref=main" >> "$GITHUB_OUTPUT"
+          else
+            echo "server-src-ref=$server_tag" >> "$GITHUB_OUTPUT"
+          fi
           # The Release PR must point at a published server tag.
           if ! git ls-remote --exit-code https://github.com/7K-Inari/inari-server.git "refs/tags/$server_tag" >/dev/null 2>&1; then
             echo "inari-server tag $server_tag does not exist — refuse to gate an unpublished server" >&2
@@ -174,11 +196,11 @@ jobs:
     env:
       IMAGE_REF: ghcr.io/7k-inari/inari-server:${{ needs.resolve.outputs.image-tag }}
     steps:
-      - name: Checkout inari-server at pinned tag (e2e script source)
+      - name: Checkout inari-server (Go suites + migrations dir)
         uses: actions/checkout@v4
         with:
           repository: 7K-Inari/inari-server
-          ref: ${{ needs.resolve.outputs.server-tag }}
+          ref: ${{ needs.resolve.outputs.server-src-ref }}
           path: inari-server
 
       - name: Checkout bundle (charts under test)
@@ -206,25 +228,51 @@ jobs:
           ref: ${{ steps.agent.outputs.ref }}
           path: inari-agent
 
+      - name: Resolve matching inari-operator ref
+        id: operator
+        env:
+          HEAD_REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          BRANCH="$HEAD_REF"
+          if git ls-remote --exit-code https://github.com/7K-Inari/inari-operator.git "refs/heads/$BRANCH" >/dev/null 2>&1; then
+            echo "ref=$BRANCH" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout inari-operator (operator + console smoke charts)
+        uses: actions/checkout@v4
+        with:
+          repository: 7K-Inari/inari-operator
+          ref: ${{ steps.operator.outputs.ref }}
+          path: inari-operator
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: inari-server/go.mod
 
       - name: Install cosign
-        if: needs.resolve.outputs.build-from-ref == 'none'
+        if: needs.resolve.outputs.build-from-ref == 'none' && github.event.inputs.image-tag == ''
         uses: sigstore/cosign-installer@v3
 
       - name: Pull and verify published server image
         # Prefer the cosign-signed artifact that actually ships over a
         # rebuild. The pulled image is re-tagged to `inari/server:e2e` —
         # the tag golden-path.sh loads into kind — so no rebuild happens.
+        # cosign verification is skipped for an explicit image-tag override:
+        # the edge workflow signs only the OpenAPI artifact, not the image
+        # (repair/debug path — Release PRs always verify).
         if: needs.resolve.outputs.build-from-ref == 'none'
         run: |
           set -euo pipefail
-          cosign verify "$IMAGE_REF" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity-regexp https://github.com/7K-Inari/inari-server/
+          if [ -z "${{ github.event.inputs.image-tag }}" ]; then
+            cosign verify "$IMAGE_REF" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              --certificate-identity-regexp https://github.com/7K-Inari/inari-server/
+          else
+            echo "image-tag override — skipping cosign verification (edge images are unsigned)"
+          fi
           docker pull "$IMAGE_REF"
           docker tag "$IMAGE_REF" inari/server:e2e
 
@@ -247,13 +295,35 @@ jobs:
 
       - name: Run golden path
         # KEEP_CLUSTER=true: the workflow owns teardown (final step) so the
-        # diagnostics step still has a cluster to inspect on failure.
+        # diagnostics step still has a cluster to inspect on failure, and the
+        # api-schema step below still has a stack to test against.
+        working-directory: bundle
+        # Chart dirs are pinned explicitly, resolved the same way for the
+        # agent and operator component checkouts; SERVER_MIGRATIONS_DIR
+        # points at the inari-server checkout (HA(c) migration count).
+        run: >-
+          AGENT_CHART_DIR=${{ github.workspace }}/inari-agent/charts/inari-agent
+          OPERATOR_CHART_DIR=${{ github.workspace }}/inari-operator/charts/inari-operator
+          SERVER_MIGRATIONS_DIR=${{ github.workspace }}/inari-server/internal/db/migrations
+          KEEP_CLUSTER=true INARI_HA=${{ matrix.ha }}
+          bash scripts/e2e/golden-path.sh
+
+      - name: Run api-schema e2e against the live stack
+        # The driver is stored in this repo and copied into the inari-server
+        # checkout: it imports inari-server modules and reads dist/openapi.yaml
+        # (generated here — the file is not committed at server tags).
         working-directory: inari-server
-        # PLATFORM_CHART_DIR: golden-path.sh at older server tags (e.g.
-        # v3.0.0) defaults to charts/platform-config, which was renamed
-        # charts/inari-platform in this repo — pin the new path explicitly
-        # so both old and new script revisions work.
-        run: HELM_CHARTS_DIR=${{ github.workspace }}/bundle PLATFORM_CHART_DIR=${{ github.workspace }}/bundle/charts/inari-platform KEEP_CLUSTER=true INARI_HA=${{ matrix.ha }} bash e2e/golden-path.sh
+        run: |
+          set -euo pipefail
+          cp "${{ github.workspace }}/bundle/scripts/e2e/api_schema_e2e_test.go" e2e/
+          make export-openapi
+          kubectl -n inari port-forward svc/inari-server 18090:8080 >/dev/null 2>&1 &
+          kubectl -n inari port-forward svc/keycloak-service 18091:8080 >/dev/null 2>&1 &
+          sleep 3 # port-forwards need a moment before accepting connections
+          E2E_BASE_URL=http://127.0.0.1:18090 \
+          E2E_KEYCLOAK_URL=http://127.0.0.1:18091 \
+          E2E_OPENAPI="${{ github.workspace }}/inari-server/dist/openapi.yaml" \
+          go test -tags=e2e ./e2e/ -run TestAPISchemaConformance -count=1 -v
 
       - name: Dump diagnostics on failure
         if: failure()
@@ -262,6 +332,8 @@ jobs:
           kubectl -n inari get pods || true
           kubectl -n inari logs -l app.kubernetes.io/name=inari-server --prefix --tail=100 || true
           kubectl -n inari-system logs deployment/inari-agent --tail=100 || true
+          kubectl -n inari logs deployment/inari-console --tail=50 || true
+          kubectl -n inari logs deployment/inari-operator --tail=50 || true
           if [ "${{ matrix.ha }}" = "true" ]; then
             kubectl -n inari get pdb,deployment inari-server -o wide || true
             PRIMARY=$(kubectl -n inari get cluster.postgresql.cnpg.io/postgresql -o jsonpath='{.status.currentPrimary}' 2>/dev/null || true)
