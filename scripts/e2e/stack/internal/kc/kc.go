@@ -21,12 +21,29 @@ type Client struct {
 func (c *Client) base() string { return "http://keycloak-service:8080" }
 
 func (c *Client) get(path, token string, out any) error {
-	body, err := kube.Curl(c.NS, c.Toolbox,
-		"-H", "Authorization: Bearer "+token, c.base()+path)
+	var args []string
+	if token != "" {
+		args = append(args, "-H", "Authorization: Bearer "+token)
+	}
+	args = append(args, c.base()+path)
+	body, err := kube.Curl(c.NS, c.Toolbox, args...)
 	if err != nil {
 		return err
 	}
 	return json.Unmarshal([]byte(body), out)
+}
+
+// RealmIssuer returns the issuer advertised by the realm's OIDC discovery
+// document. Issuer convergence after the hostname patch is observable ONLY
+// this way — no k8s condition exists for it.
+func (c *Client) RealmIssuer() (string, error) {
+	var doc struct {
+		Issuer string `json:"issuer"`
+	}
+	if err := c.get("/realms/inari/.well-known/openid-configuration", "", &doc); err != nil {
+		return "", err
+	}
+	return doc.Issuer, nil
 }
 
 func (c *Client) tokenEndpoint(form ...string) (string, error) {

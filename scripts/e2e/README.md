@@ -10,8 +10,9 @@ architecture plan §1, "Unified testing folder structure"):
 
 ```
 scripts/e2e/
-├── golden-path.sh            # full-stack kind gate, PROVISION-ONLY (shell→Go migration phase 1:
-│                             #   it brings the stack up and writes a handoff file; stack/ asserts)
+├── golden-path.sh            # full-stack kind gate, PROVISION-ONLY (shell→Go migration phase 2:
+│                             #   kind lifecycle + git hostPath + KC seeding/registration in shell;
+│                             #   EVERY helm install runs in the Go provisioner it invokes mid-flow)
 ├── ui/                       # console UI e2e (Playwright Test suite; see ui/README.md)
 ├── api/
 │   └── api_schema_e2e_test.go    # API ↔ OpenAPI schema conformance (Go, tag e2e)
@@ -19,12 +20,14 @@ scripts/e2e/
 │   └── kubectl-access.sh         # control-plane-only kubectl access scenario
 ├── lib/
 │   └── ui-proxy.mjs              # single-origin shim shared by the UI suites
-└── stack/                      # golden-path assertion suite (self-contained Go module, tag e2e)
-    ├── main_test.go              # TestGoldenPath entry: ordered subtests per phase
-    ├── suite/                    # tenant / cluster / RBAC / policy / disruption (E2E_HA=1) phases
-    ├── internal/                 # thin wrappers: poll, kube, kind, kc, inariapi, fga (CLI exec only)
-    └── testdata/
-        └── nats-values.yaml      # HA NATS JetStream values consumed by golden-path.sh
+└── stack/                      # golden-path suite (self-contained Go module, tag e2e)
+    ├── main_test.go              # TestGoldenPath (assertions) + TestProvisionStack/TestProvisionAgent
+    │                           #   (helm provisioning entries the script invokes)
+    ├── suite/                    # provision.go (dependency-layered concurrent helm installs) +
+    │                           #   tenant / cluster / RBAC / policy / disruption (E2E_HA=1) phases
+    ├── internal/                 # thin wrappers: poll, kube, kind, kc, inariapi, fga, helm (CLI exec only)
+    └── testdata/                 # e2e values: nats-values.yaml (HA 3-node), nats-values-e2e.yaml
+                                #   (non-HA single node), platform/server-values-e2e[-ha].yaml trims
 ```
 
 ## Suite map
@@ -77,8 +80,10 @@ first (`inari/server:e2e` from inari-server, `inari/agent:e2e` from
 inari-agent). For the HA assertions also set `SERVER_MIGRATIONS_DIR` to the
 inari-server checkout's `internal/db/migrations`.
 
-Two steps (shell→Go migration phase 1): the script provisions and writes a
-handoff file; the Go stack suite asserts against the deployed stack:
+Two steps (shell→Go migration phase 2): the script provisions (kind + KC
+seeding in shell; it invokes the Go provisioner for every helm install) and
+writes a handoff file; the Go stack suite asserts against the deployed
+stack:
 
 ```sh
 KEEP_CLUSTER=true E2E_HANDOFF_PATH=/tmp/inari-e2e-handoff.json \

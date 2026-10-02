@@ -8,13 +8,15 @@ name: release-e2e
 #   2. server-integration — run the full `go test -tags=integration` suite
 #                           against that exact tag (the artifact being
 #                           released, not a floating branch).
-#   3. golden-path        — kind-based golden path (HA matrix preserved),
-#                           preferring the published cosign-signed image
-#                           ghcr.io/7k-inari/inari-server:vX.Y.Z over a
-#                           rebuild. scripts/e2e/golden-path.sh provisions
-#                           the stack; scripts/e2e/stack (Go, -tags=e2e)
-#                           asserts the golden path incl. HA disruption on
-#                           the HA leg (phase 1 of the shell→Go migration).
+  #   3. golden-path        — kind-based golden path (HA matrix preserved),
+  #                           preferring the published cosign-signed image
+  #                           ghcr.io/7k-inari/inari-server:vX.Y.Z over a
+  #                           rebuild. scripts/e2e/golden-path.sh provisions
+  #                           (kind + KC seeding in shell; every helm install
+  #                           via the Go provisioner it invokes);
+  #                           scripts/e2e/stack (Go, -tags=e2e) asserts the
+  #                           golden path incl. HA disruption on the HA leg
+  #                           (phase 2 of the shell→Go migration).
 #                           The inari-server checkout at the pinned tag is
 #                           still used for the Go test suites and the
 #                           api-schema e2e driver. The stack additionally
@@ -310,9 +312,12 @@ jobs:
           wait: 60s
 
       - name: Provision golden-path stack
-        # The script is PROVISION-ONLY (phase 1 of the shell→Go migration):
-        # assertions run in the Go stack suite in the next step. The handoff
-        # JSON is the contract between the two.
+        # Phase 2 of the shell→Go migration: the script owns only kind
+        # lifecycle, the git hostPath, and the KC seeding/registration —
+        # every helm install runs in the Go provisioner
+        # (scripts/e2e/stack, TestProvisionStack/TestProvisionAgent), which
+        # the script invokes mid-flow. Assertions run in the next step; the
+        # handoff JSON is the contract between the two.
         # KEEP_CLUSTER=true: the workflow owns teardown (final step) so the
         # diagnostics step still has a cluster to inspect on failure, and the
         # api-schema step below still has a stack to test against.

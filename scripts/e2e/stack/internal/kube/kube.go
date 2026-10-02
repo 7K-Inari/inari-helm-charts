@@ -67,12 +67,40 @@ func RolloutStatus(ns, resource, timeout string) error {
 	return err
 }
 
-// WaitCondition wraps kubectl wait --for=<condition> <resources...>.
+// WaitCondition wraps kubectl wait --for=<condition> <resources...>. An
+// empty ns targets cluster-scoped resources (no -n flag).
 func WaitCondition(ns, condition, timeout string, resources ...string) error {
-	args := []string{"-n", ns, "wait", "--for=" + condition}
+	var args []string
+	if ns != "" {
+		args = append(args, "-n", ns)
+	}
+	args = append(args, "wait", "--for="+condition)
 	args = append(args, resources...)
 	args = append(args, "--timeout="+timeout)
 	_, err := Kubectl(args...)
+	return err
+}
+
+// ApplyStdin pipes a manifest into kubectl apply -f -.
+func ApplyStdin(manifest string) (string, error) {
+	c := exec.Command("kubectl", "apply", "-f", "-")
+	c.Stdin = strings.NewReader(manifest)
+	var stdout, stderr bytes.Buffer
+	c.Stdout = &stdout
+	c.Stderr = &stderr
+	if err := c.Run(); err != nil {
+		return "", fmt.Errorf("kubectl apply -f -: %w\n%s", err, stderr.String())
+	}
+	return stdout.String(), nil
+}
+
+// EnsureNamespace creates the namespace if absent (idempotent).
+func EnsureNamespace(ns string) error {
+	out, err := Kubectl("create", "namespace", ns, "--dry-run=client", "-o", "yaml")
+	if err != nil {
+		return err
+	}
+	_, err = ApplyStdin(out)
 	return err
 }
 

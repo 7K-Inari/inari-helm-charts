@@ -1,0 +1,21 @@
+# NATS JetStream for the NON-HA e2e leg — stack-trimmed single node
+# (shell→Go migration phase 2). The non-HA gate makes no NATS-HA assertion,
+# so one node with R=1 streams (nats.streamReplicas=1 on the inari-server
+# release) cuts two pods + two PVCs and the meta-group quorum wait off
+# bring-up. The HA leg keeps testdata/nats-values.yaml (3-node, R=3).
+fullnameOverride: nats
+config:
+  cluster:
+    enabled: false
+  jetstream:
+    enabled: true
+    fileStore:
+      enabled: true
+      pvc:
+        size: 1Gi
+container:
+  merge:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
