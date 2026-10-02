@@ -421,7 +421,16 @@ grep -qi "<html" <<<"$CONSOLE_INDEX" \
 CONSOLE_CONFIG=$(curl -sf -m 10 "http://127.0.0.1:$CONSOLE_PORT/config.js" || true)
 grep -q "keycloakUrl: \"http://$KC_FQDN\"" <<<"$CONSOLE_CONFIG" \
   || die "console config.js does not point at the Keycloak login (http://$KC_FQDN): $CONSOLE_CONFIG"
-log "console serves the SPA and its login config targets http://$KC_FQDN"
+# B10 (run d701e2ba): also pin the realm, client id, and API base URL — a
+# wrong value in any of them strands the SPA at login or points it at a
+# dead API, and none of that is visible from the keycloakUrl grep alone.
+grep -q 'keycloakRealm: "inari"' <<<"$CONSOLE_CONFIG" \
+  || die "console config.js keycloakRealm is not \"inari\": $CONSOLE_CONFIG"
+grep -q 'keycloakClientId: "inari-ui"' <<<"$CONSOLE_CONFIG" \
+  || die "console config.js keycloakClientId is not \"inari-ui\": $CONSOLE_CONFIG"
+grep -q 'apiBaseUrl: "/api/v1"' <<<"$CONSOLE_CONFIG" \
+  || die "console config.js apiBaseUrl is not \"/api/v1\": $CONSOLE_CONFIG"
+log "console serves the SPA and its config targets http://$KC_FQDN (realm inari, client inari-ui, api /api/v1)"
 
 # psql_inari runs SQL against the platform database via the CNPG primary
 # pod (the toolbox image has curl only; the connection URI never leaves the

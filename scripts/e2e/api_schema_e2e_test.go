@@ -196,6 +196,11 @@ func TestAPISchemaConformance(t *testing.T) {
 		{"extensions", "/api/v1/tenants/{org}/extensions"},
 		{"templates", "/api/v1/tenants/{org}/templates"},
 		{"clusters", "/api/v1/tenants/{org}/clusters"},
+		// RBAC surface the Access console depends on (run d701e2ba B12):
+		// member list, role list, and the static permission catalog.
+		{"org members", "/api/v1/tenants/{org}/members"},
+		{"roles", "/api/v1/tenants/{org}/roles"},
+		{"permission catalog", "/api/v1/tenants/{org}/permissions/catalog"},
 	}
 
 	org := os.Getenv("E2E_ORG")
