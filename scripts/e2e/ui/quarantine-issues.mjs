@@ -15,7 +15,7 @@
 // runs (flake-report.json written by report-flakes.mjs). No state outside
 // GitHub artifacts + issues.
 //
-// Env: GITHUB_TOKEN (issues:write), GITHUB_REPOSITORY (owner/repo).
+// Env: GH_TOKEN or GITHUB_TOKEN (issues:write), GITHUB_REPOSITORY (owner/repo).
 // Uses the preinstalled `gh` CLI for API calls and artifact download
 // (gh handles the artifact zip). Pure decision logic is exported for
 // node:test (quarantine-issues.test.mjs); main() only runs when invoked
@@ -175,8 +175,9 @@ function applyActions(repo, actions) {
 
 async function main() {
   const repo = process.env.GITHUB_REPOSITORY;
-  if (!repo || !process.env.GITHUB_TOKEN) {
-    console.error("quarantine-issues: GITHUB_REPOSITORY and GITHUB_TOKEN are required");
+  // gh CLI accepts either; the workflow exports GH_TOKEN.
+  if (!repo || !(process.env.GITHUB_TOKEN || process.env.GH_TOKEN)) {
+    console.error("quarantine-issues: GITHUB_REPOSITORY and GH_TOKEN (or GITHUB_TOKEN) are required");
     process.exit(1);
   }
   const since = new Date(Date.now() - WINDOW_DAYS * 86400_000).toISOString();
