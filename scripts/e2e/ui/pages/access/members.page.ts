@@ -27,6 +27,29 @@ export class MembersTabPage {
     return this.teamCard(teamName).getByText(memberText).first();
   }
 
+  /** "Read-only" badge shown next to the Members heading when the user
+   *  lacks the manage-members capability (members-tab.tsx). */
+  readOnlyBadge(): Locator {
+    return this.page.getByText("Read-only", { exact: true }).first();
+  }
+
+  /** First member role select (aria-label "Role for <displayName>"). */
+  anyMemberRoleSelect(): Locator {
+    return this.page.getByLabel(/^Role for /).first();
+  }
+
+  /** Submit button of the invite form. Disabled for users without the
+   *  manage-members capability. */
+  inviteButton(): Locator {
+    return this.page.getByRole("button", { name: "Invite", exact: true });
+  }
+
+  /** Name input of the "Create team" form. Disabled for users without the
+   *  manage-teams capability. */
+  createTeamNameInput(): Locator {
+    return this.page.locator("#team-name");
+  }
+
   /** Create a team via the "Create team" form (role select left at its
    *  default; the Teams & Roles matrix owns team→role mapping). */
   async createTeam(name: string): Promise<void> {

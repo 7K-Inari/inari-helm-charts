@@ -33,9 +33,12 @@ scripts/e2e/ui/
 │   ├── login.page.ts           # KC 26 two-step form (username → submit → password)
 │   ├── app-shell.page.ts       # boot gate, tenant cards, sidebar nav, tenant switcher,
 │   │                           #   "Loading…" waits
+│   ├── catalog.page.ts         # Catalog browse marker
+│   ├── deploys.page.ts         # Deploys (resource inventory) marker
 │   ├── access/                 # Access section + Members / Teams & Roles / Roles / Identity tabs
 │   ├── organizations/          # create-organization form (ids from inari-ui)
-│   └── settings/               # Settings inner nav + Org profile / Git config sub-pages
+│   └── settings/               # Settings inner nav (admin-filtered), read-only notice,
+│                               #   Org profile / Git config sub-pages
 └── specs/
     ├── smoke/
     │   └── access-tabs.spec.ts # @p0 @smoke — the four RBAC tabs render their markers
@@ -50,8 +53,12 @@ scripts/e2e/ui/
         ├── role-lifecycle.spec.ts # @p0 @rbac — custom role CRUD, team→role mapping,
         │                          #   propagation to e2e-member's /me/permissions,
         │                          #   delete-in-use 409, cleanup
-        └── builtin-protection.spec.ts # @p0 @rbac — built-in role rename/delete 409s (UI + API)
-                                       #   and the tenant.admin last-admin guardrail (P0-3/P0-4)
+        ├── builtin-protection.spec.ts # @p0 @rbac — built-in role rename/delete 409s (UI + API)
+        │                              #   and the tenant.admin last-admin guardrail (P0-3/P0-4)
+        └── role-gating-matrix.spec.ts # @p1 @rbac — per-persona gating matrix (P1-1): each
+                                       #   role persona's control set vs its migration-0029
+                                       #   bundle, negative direct-URL nav, bundle regression
+                                       #   guard (API)
     └── tenants/
         └── onboarding.spec.ts    # @p1 @tenants — org creation through the console UI,
                                   #   tenant landing, Access tabs in the fresh org,
