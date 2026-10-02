@@ -4,7 +4,8 @@
 // Keycloak client (directAccessGrantsEnabled + audience mapper are
 // provisioned by golden-path.sh — same token the golden path itself uses).
 // Never use this client to mutate what a spec is supposed to exercise
-// through the UI.
+// through the UI; DELETE exists only for spec-owned cleanup of objects the
+// spec itself created (see specs/rbac/role-lifecycle.spec.ts).
 
 import { API_BASE, KC_REALM, KC_URL } from "./env";
 import { PERSONAS } from "../fixtures/auth";
@@ -58,11 +59,17 @@ export class ApiClient {
     if (!res.ok) {
       throw new Error(`api: ${method} ${path} failed: ${res.status} ${await res.text()}`);
     }
-    return (await res.json()) as T;
+    const text = await res.text();
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 
   get<T>(path: string): Promise<T> {
     return this.request<T>("GET", path);
+  }
+
+  /** Cleanup-only: delete an object the calling spec itself created. */
+  async delete(path: string): Promise<void> {
+    await this.request<unknown>("DELETE", path);
   }
 
   post<T>(path: string): Promise<T> {

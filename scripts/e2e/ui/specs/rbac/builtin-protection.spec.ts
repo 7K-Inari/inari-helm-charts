@@ -87,7 +87,7 @@ test.describe("built-in role protection @p0 @rbac", () => {
         // Edit stays available (the permission bundle is editable), but the
         // built-in name is immutable — the editor disables the Name input.
         await expect(roles.editButton(row)).toBeEnabled();
-        await roles.openEditor(row);
+        await roles.openEditor(displayName);
         await expect(roles.editorNameInput()).toBeDisabled();
         await roles.editorCancelButton().click();
       });
@@ -161,7 +161,8 @@ test.describe("built-in role protection @p0 @rbac", () => {
     const tab = new TeamsRolesTabPage(page);
     await gotoAccessTab(page, TeamsRolesTabPage.LABEL, () => tab.marker());
     await expect(tab.roleSelect(display)).toBeVisible();
-    await tab.assignAndSave(display, BUILTIN_ROLES.viewer);
+    await tab.selectRoleForTeam(display, BUILTIN_ROLES.viewer);
+    await tab.saveChanges();
 
     // The UI must surface the server's 409 (roles_http.go: "at least one
     // team must retain the tenant.admin permission").

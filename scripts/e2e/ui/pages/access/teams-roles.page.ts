@@ -1,5 +1,6 @@
 // Access → Teams & Roles tab page object. Marker text ("Assign each team a
-// role") comes from inari-ui src/pages/access/role-matrix.tsx. No assertions.
+// role") and the matrix markup come from inari-ui
+// src/pages/access/role-matrix.tsx. No assertions.
 
 import type { Locator, Page } from "@playwright/test";
 
@@ -14,14 +15,23 @@ export class TeamsRolesTabPage {
     return this.page.getByText(TeamsRolesTabPage.MARKER).first();
   }
 
-  /** Per-team role select (`aria-label="Role for {display}"`). */
+  /** Per-team role select (aria-label "Role for <team display name>"). */
   roleSelect(teamDisplay: string): Locator {
     return this.page.getByLabel(`Role for ${teamDisplay}`);
   }
 
-  /** "Save changes" button (whole-set PUT of the draft). */
+  /** Pick a role for a team by its option label (display name or slug). */
+  async selectRoleForTeam(teamDisplay: string, roleLabel: string): Promise<void> {
+    await this.roleSelect(teamDisplay).selectOption({ label: roleLabel });
+  }
+
   saveButton(): Locator {
-    return this.page.getByRole("button", { name: "Save changes", exact: true });
+    return this.page.getByRole("button", { name: "Save changes" });
+  }
+
+  /** Persist the drafted matrix (whole-set replace server-side). */
+  async saveChanges(): Promise<void> {
+    await this.saveButton().click();
   }
 
   /** "Discard" button, visible only while a dirty draft exists. */
@@ -32,11 +42,5 @@ export class TeamsRolesTabPage {
   /** Tab-level error card showing the server's rejection message. */
   errorCard(): Locator {
     return this.page.locator(".text-destructive").first();
-  }
-
-  /** Assign a role to a team and submit the whole-set save. */
-  async assignAndSave(teamDisplay: string, roleDisplayName: string): Promise<void> {
-    await this.roleSelect(teamDisplay).selectOption({ label: roleDisplayName });
-    await this.saveButton().click();
   }
 }
