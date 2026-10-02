@@ -56,10 +56,16 @@ interface ListedTenants {
 }
 
 /**
- * Land in the new tenant's context. The SPA force-refreshes the KC token
- * before navigating, but if the organization claim still lags, the tenant
- * context falls back to /all/overview — so retry the navigation until the
- * URL sticks on the new slug.
+ * Land in the new tenant's context. The org list in tenant-context.tsx is
+ * parsed from the KC token claim, so the new slug only becomes valid once
+ * Keycloak reports the membership. Each retry below is a full page load,
+ * which re-runs keycloak-js init and (via the KC SSO cookie) silently
+ * re-issues a FRESH token with current claims — tests 2+ start from the
+ * original setup storageState whose tokens predate the org, but nothing
+ * caches those stale tokens across page loads. The poll therefore covers
+ * the server-side org-claim propagation; the 90s budget gives headroom
+ * over the realm's access-token lifespan for cases where keycloak-js
+ * reuses a still-valid token for one iteration.
  */
 async function landInTenant(page: Page): Promise<AppShellPage> {
   const shell = new AppShellPage(page);
@@ -72,7 +78,7 @@ async function landInTenant(page: Page): Promise<AppShellPage> {
       expect(page).toHaveURL(new RegExp(`/${SLUG}/overview`), { timeout: 5_000 });
       return true;
     },
-    { timeout: 60_000, interval: 5_000, message: `landing in /${SLUG}/overview` },
+    { timeout: 90_000, interval: 5_000, message: `landing in /${SLUG}/overview` },
   );
   return shell;
 }
@@ -147,7 +153,6 @@ test.describe.serial("tenant onboarding via the console UI @p1 @tenants", () => 
     expect(org.displayName).toBe(DISPLAY_NAME);
     expect(org.status).toBeTruthy();
     expect(org.createdAt).toBeTruthy();
-    expect(org.createdAt).toBeTruthy();
   });
 
   test("duplicate slug surfaces the 409 as a field-level error", async ({ page }) => {
@@ -167,6 +172,28 @@ test.describe.serial("tenant onboarding via the console UI @p1 @tenants", () => 
     await expect(createOrg.slugError()).not.toBeEmpty();
     // No navigation happened and the form is usable again.
     await expect(page).toHaveURL(/\/create-organization$/);
+    await expect(createOrg.submitButton()).toBeEnabled();
+  });
+
+  test("an invalid slug is rejected client-side before any request", async ({ page }) => {
+    const shell = new AppShellPage(page);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await shell.waitForBoot();
+
+    await shell.openCreateOrganization();
+    const createOrg = new CreateOrganizationPage(page);
+    await expect(createOrg.heading()).toBeVisible();
+
+    // "Bad_Slug!" fails the SLUG_PATTERN check in create-organization.tsx,
+    // which surfaces the pattern message on the slug field WITHOUT a server
+    // round-trip — so the error must appear immediately and no org is
+    // created (verified implicitly: nothing polls here).
+    await createOrg.createOrganization("E2E invalid slug", "Bad_Slug!");
+
+    await expect(createOrg.slugError()).toHaveText(/lowercase letters, numbers, and dashes/);
+    await expect(page).toHaveURL(/\/create-organization$/);
+    // Client-side rejection never enters the submitting state, so the
+    // button stays in its idle, enabled form throughout.
     await expect(createOrg.submitButton()).toBeEnabled();
   });
 });
