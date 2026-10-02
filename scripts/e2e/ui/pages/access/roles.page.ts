@@ -25,9 +25,15 @@ export class RolesTabPage {
     return this.page.locator(".text-destructive").first();
   }
 
+  /** "New role" button — only rendered while no editor is open, so its
+   *  visibility doubles as the "editor closed (save settled)" signal. */
+  newRoleButton(): Locator {
+    return this.page.getByRole("button", { name: "New role" });
+  }
+
   /** Open the create-role editor. */
   async newRole(): Promise<void> {
-    await this.page.getByRole("button", { name: "New role" }).click();
+    await this.newRoleButton().click();
   }
 
   /** Open the editor for an existing role. */

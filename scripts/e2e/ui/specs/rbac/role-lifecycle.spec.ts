@@ -127,6 +127,14 @@ test.describe.serial("RBAC role lifecycle and propagation @p0 @rbac", () => {
     await roles.togglePermission(slugs[0]);
     await roles.togglePermission(slugs[3]);
     await roles.submitEditor();
+    // The editor closes (onDone → "New role" re-renders) only after the
+    // PATCH resolves — wait for that before reloading, or the navigation
+    // can abort the in-flight save. On failure the editor stays open and
+    // this times out with the real error still on screen.
+    await poll(
+      async () => expect(roles.newRoleButton()).toBeVisible(),
+      { timeout: 20_000, interval: 1_000, message: "editor closed after save" },
+    );
 
     // Reload and verify the persisted bundle.
     await page.reload({ waitUntil: "domcontentloaded" });
@@ -169,6 +177,20 @@ test.describe.serial("RBAC role lifecycle and propagation @p0 @rbac", () => {
     );
     await matrix.selectRoleForTeam(display, `E2E ${ROLE_NAME}`);
     await matrix.saveChanges();
+
+    // The select is bound to the client-side draft, which clears only after
+    // the PUT resolves. Wait for the settled state — disabled AND back to
+    // "Save changes" (while the PUT is in flight the button is disabled but
+    // reads "Saving…") — otherwise the re-read below observes the unsaved
+    // draft and a failed save would only surface 120s later in the
+    // propagation poll.
+    await poll(
+      async () => {
+        await expect(matrix.saveButton()).toBeDisabled();
+        await expect(matrix.saveButton()).toHaveText("Save changes");
+      },
+      { timeout: 20_000, interval: 1_000, message: "matrix save settled (draft cleared)" },
+    );
 
     // After the whole-set replace the matrix refetches; the row must re-read
     // with the custom role selected (not the "No role" sentinel).
