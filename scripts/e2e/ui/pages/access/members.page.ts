@@ -48,9 +48,4 @@ export class MembersTabPage {
       .first()
       .click();
   }
-
-  /** Delete a team (removes its membership and role mapping). */
-  async deleteTeam(teamName: string): Promise<void> {
-    await this.teamCard(teamName).getByRole("button", { name: "Delete" }).click();
-  }
 }
