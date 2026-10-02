@@ -1,7 +1,7 @@
 // App-shell page object: console boot gate, tenant switcher/cards, sidebar
 // nav, and the "Loading…" waits. No assertions — specs call expect().
 
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 export class AppShellPage {
   constructor(readonly page: Page) {}
@@ -42,7 +42,30 @@ export class AppShellPage {
    * for callers with canCreateOrganizations).
    */
   async openCreateOrganization(): Promise<void> {
-    await this.page.getByRole("button", { name: "Tenant context switcher" }).click();
+    await this.switcherButton().click();
     await this.page.getByRole("menuitem", { name: "Create organization" }).click();
+  }
+
+  /**
+   * The header tenant-switcher trigger. Its text is the current-context
+   * indicator ("All tenants" or the active org display name, optionally
+   * with a team suffix) — specs assert it after every switch.
+   */
+  switcherButton(): Locator {
+    return this.page.getByRole("button", { name: "Tenant context switcher" });
+  }
+
+  /**
+   * Switch tenant context by org display name via the header switcher
+   * (inari-ui src/layout/tenant-switcher.tsx). Selecting an org triggers a
+   * FULL Keycloak re-login (organization scope, prompt:none) that navigates
+   * away and lands on /<slug>/overview, so callers MUST poll
+   * (helpers/poll.ts) for the new context — never assert immediately. The
+   * same org can render twice in the menu (Recent + Organizations
+   * sections), hence .first().
+   */
+  async switchTenant(name: string): Promise<void> {
+    await this.switcherButton().click();
+    await this.page.getByRole("menuitem", { name, exact: true }).first().click();
   }
 }

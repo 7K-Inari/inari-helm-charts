@@ -51,10 +51,14 @@ export class ApiClient {
     return new ApiClient(API_BASE, await getToken(username, password));
   }
 
-  private async request<T>(method: string, path: string): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const res = await fetch(`${this.base}${path}`, {
       method,
-      headers: { authorization: `Bearer ${this.token}` },
+      headers: {
+        authorization: `Bearer ${this.token}`,
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!res.ok) {
       throw new Error(`api: ${method} ${path} failed: ${res.status} ${await res.text()}`);
@@ -72,8 +76,13 @@ export class ApiClient {
     await this.request<unknown>("DELETE", path);
   }
 
-  post<T>(path: string): Promise<T> {
-    return this.request<T>("POST", path);
+  /**
+   * Setup-only: create a spec-owned object (e.g. the org created by
+   * specs/tenants/switching.spec.ts). Never use it to mutate what a spec is
+   * supposed to exercise through the UI.
+   */
+  post<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>("POST", path, body);
   }
 
   /**
