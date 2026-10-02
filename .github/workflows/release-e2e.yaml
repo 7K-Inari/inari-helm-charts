@@ -11,12 +11,15 @@ name: release-e2e
 #   3. golden-path        — kind-based golden path (HA matrix preserved),
 #                           preferring the published cosign-signed image
 #                           ghcr.io/7k-inari/inari-server:vX.Y.Z over a
-#                           rebuild. The script lives in this repo
-#                           (scripts/e2e/golden-path.sh); the inari-server
-#                           checkout at the pinned tag is still used for the
-#                           Go test suites and the api-schema e2e driver.
-#                           The stack additionally smoke-tests the
-#                           inari-operator and inari-console charts.
+#                           rebuild. scripts/e2e/golden-path.sh provisions
+#                           the stack; scripts/e2e/stack (Go, -tags=e2e)
+#                           asserts the golden path incl. HA disruption on
+#                           the HA leg (phase 1 of the shell→Go migration).
+#                           The inari-server checkout at the pinned tag is
+#                           still used for the Go test suites and the
+#                           api-schema e2e driver. The stack additionally
+#                           smoke-tests the inari-operator and inari-console
+#                           charts.
 #
 # Trigger: pull_request on release-please Release PRs only (branch prefix
 # `release-please--` or Chart.yaml/appVersion changes), plus
@@ -306,20 +309,40 @@ jobs:
           cluster_name: inari-e2e
           wait: 60s
 
-      - name: Run golden path
+      - name: Provision golden-path stack
+        # The script is PROVISION-ONLY (phase 1 of the shell→Go migration):
+        # assertions run in the Go stack suite in the next step. The handoff
+        # JSON is the contract between the two.
         # KEEP_CLUSTER=true: the workflow owns teardown (final step) so the
         # diagnostics step still has a cluster to inspect on failure, and the
         # api-schema step below still has a stack to test against.
         working-directory: bundle
         # Chart dirs are pinned explicitly, resolved the same way for the
-        # agent and operator component checkouts; SERVER_MIGRATIONS_DIR
-        # points at the inari-server checkout (HA(c) migration count).
+        # agent and operator component checkouts.
         run: >-
           AGENT_CHART_DIR=${{ github.workspace }}/inari-agent/charts/inari-agent
           OPERATOR_CHART_DIR=${{ github.workspace }}/inari-operator/charts/inari-operator
-          SERVER_MIGRATIONS_DIR=${{ github.workspace }}/inari-server/internal/db/migrations
+          E2E_HANDOFF_PATH=/tmp/inari-e2e-handoff.json
           KEEP_CLUSTER=true INARI_HA=${{ matrix.ha }}
           bash scripts/e2e/golden-path.sh
+
+      - name: Run golden-path Go assertions (stack suite)
+        # Phase 1 of the shell→Go migration: the script above provisions,
+        # this suite asserts (per-phase failure identity in CI output).
+        # E2E_HA=1 on the HA leg unlocks the disruption subtests;
+        # SERVER_MIGRATIONS_DIR points at the inari-server checkout (HA(c)
+        # migration count).
+        # The stack suite is a nested Go module: go test must run from INSIDE
+        # it (a ./scripts/e2e/stack/... pattern from the repo root fails with
+        # "directory prefix ... does not contain main module").
+        working-directory: bundle/scripts/e2e/stack
+        env:
+          E2E_HA: ${{ matrix.ha && '1' || '0' }}
+          E2E_HANDOFF_PATH: /tmp/inari-e2e-handoff.json
+          SERVER_MIGRATIONS_DIR: ${{ github.workspace }}/inari-server/internal/db/migrations
+        run: >-
+          go test -tags=e2e -count=1 -json ./...
+          2>&1 | tee /tmp/golden-path-go.json
 
       - name: Run api-schema e2e against the live stack
         # The driver is stored in this repo and copied into the inari-server
@@ -418,23 +441,48 @@ jobs:
           # Traces/videos/screenshots are already zip/mp4/png — skip gzip.
           compression-level: 0
 
-      - name: Dump diagnostics on failure
+      - name: Collect diagnostics bundle on failure
         if: failure()
         run: |
+          set +e
           kubectl config use-context kind-inari-e2e || true
-          kubectl -n inari get pods || true
-          kubectl -n inari logs -l app.kubernetes.io/name=inari-server --prefix --tail=100 || true
-          kubectl -n inari-system logs deployment/inari-agent --tail=100 || true
-          kubectl -n inari logs deployment/inari-console --tail=50 || true
-          kubectl -n inari logs deployment/inari-operator --tail=50 || true
+          mkdir -p /tmp/e2e-diag
+          kubectl -n inari get pods -o wide > /tmp/e2e-diag/pods.txt 2>&1
+          kubectl -n inari get events --sort-by=.lastTimestamp > /tmp/e2e-diag/events.txt 2>&1
+          kubectl -n inari describe pods > /tmp/e2e-diag/describe-pods.txt 2>&1
+          kubectl -n inari logs -l app.kubernetes.io/name=inari-server --prefix --tail=500 \
+            > /tmp/e2e-diag/inari-server.log 2>&1
+          kubectl -n inari-system logs deployment/inari-agent --tail=500 > /tmp/e2e-diag/inari-agent.log 2>&1
+          kubectl -n inari logs deployment/inari-console --tail=100 > /tmp/e2e-diag/inari-console.log 2>&1
+          kubectl -n inari logs deployment/inari-operator --tail=100 > /tmp/e2e-diag/inari-operator.log 2>&1
+          cp /tmp/inari-e2e-handoff.json /tmp/e2e-diag/ 2>/dev/null
           if [ "${{ matrix.ha }}" = "true" ]; then
-            kubectl -n inari get pdb,deployment inari-server -o wide || true
-            PRIMARY=$(kubectl -n inari get cluster.postgresql.cnpg.io/postgresql -o jsonpath='{.status.currentPrimary}' 2>/dev/null || true)
+            kubectl -n inari get pdb,deployment inari-server -o wide > /tmp/e2e-diag/ha.txt 2>&1
+            PRIMARY=$(kubectl -n inari get cluster.postgresql.cnpg.io/postgresql \
+              -o jsonpath='{.status.currentPrimary}' 2>/dev/null)
             if [ -n "$PRIMARY" ]; then
               URI=$(kubectl -n inari get secret inari-db -o jsonpath='{.data.inari-uri}' | base64 -d)
-              kubectl -n inari exec "$PRIMARY" -c postgres -- psql "$URI" -c 'SELECT name, holder, expires_at FROM leader_leases' || true
+              kubectl -n inari exec "$PRIMARY" -c postgres -- \
+                psql "$URI" -c 'SELECT name, holder, expires_at FROM leader_leases' \
+                > /tmp/e2e-diag/leader-leases.txt 2>&1
             fi
           fi
+          # Keep the summary visible in the job log too.
+          cat /tmp/e2e-diag/pods.txt
+          tail -100 /tmp/e2e-diag/inari-server.log
+          tail -100 /tmp/e2e-diag/inari-agent.log
+          exit 0
+
+      - name: Upload Go test JSON + diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-path-go-ha-${{ matrix.ha }}
+          path: |
+            /tmp/golden-path-go.json
+            /tmp/e2e-diag/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Delete kind cluster
         if: always()
