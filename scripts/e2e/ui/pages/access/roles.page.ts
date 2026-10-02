@@ -13,4 +13,52 @@ export class RolesTabPage {
   marker(): Locator {
     return this.page.getByText(RolesTabPage.MARKER).first();
   }
+
+  /** Table row for a role, located by its display name. */
+  roleRow(displayName: string): Locator {
+    return this.page.getByRole("row", { name: displayName });
+  }
+
+  /** "Built-in" badge inside a role row. */
+  builtinBadge(row: Locator): Locator {
+    return row.getByText("Built-in", { exact: true });
+  }
+
+  /** Edit button inside a role row. */
+  editButton(row: Locator): Locator {
+    return row.getByRole("button", { name: "Edit", exact: true });
+  }
+
+  /**
+   * Delete button inside a role row. Only rendered for custom roles
+   * (roles-tab.tsx gates it on `!role.builtin`); specs assert absence.
+   */
+  deleteButton(row: Locator): Locator {
+    return row.getByRole("button", { name: "Delete", exact: true });
+  }
+
+  /** Open the role editor for a row. */
+  async openEditor(row: Locator): Promise<void> {
+    await this.editButton(row).click();
+  }
+
+  /** "Name" input inside the role editor card. */
+  editorNameInput(): Locator {
+    return this.page.locator("#role-name");
+  }
+
+  /** Cancel button inside the role editor card. */
+  editorCancelButton(): Locator {
+    return this.page.getByRole("button", { name: "Cancel", exact: true });
+  }
+
+  /** Inline error inside the role editor (destructive paragraph). */
+  editorError(): Locator {
+    return this.page.locator("p.text-destructive");
+  }
+
+  /** Tab-level error card (e.g. failed delete). */
+  tabError(): Locator {
+    return this.page.locator(".text-destructive").first();
+  }
 }
