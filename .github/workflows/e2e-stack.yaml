@@ -93,7 +93,11 @@ jobs:
   stack:
     name: e2e-stack (${{ inputs.mode }}, E2E_HA=${{ inputs.ha && '1' || '0' }})
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ inputs.ha && 60 || 45 }}
+    # Gate legs keep the historical 45/60 (plan §6.2 budget). The nightly
+    # needs more: same bring-up + FULL Go assertions (-timeout 40m) + the
+    # FULL Playwright suite @p0|@p1|@p2 on one runner (the pre-extraction
+    # nightly had 60m with provision-only + UI).
+    timeout-minutes: ${{ inputs.mode == 'nightly' && 75 || (inputs.ha && 60 || 45) }}
     env:
       IMAGE_REF: ghcr.io/7k-inari/inari-server:${{ inputs.image-tag }}
     steps:
