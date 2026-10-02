@@ -19,7 +19,6 @@ import { TENANT_SLUG } from "../../helpers/env";
 import { poll } from "../../helpers/poll";
 import { AppShellPage } from "../../pages/app-shell.page";
 import { OrgProfileSettingsPage } from "../../pages/settings/org-profile.page";
-import { SettingsPage } from "../../pages/settings/settings.page";
 
 const NEW_NAME = uniqueName("org");
 
@@ -82,7 +81,7 @@ test("org display name write path persists and is audited @p1 @settings", async 
   await poll(
     async () => {
       const body = await api.get<{ events?: AuditEvent[] | null }>(
-        `/tenants/${TENANT_SLUG}/audit`,
+        `/api/v1/tenants/${TENANT_SLUG}/audit`,
       );
       const hit = (body.events ?? []).find((e) =>
         [e.action, e.objectType, e.objectName, e.detail].join(" ").includes(NEW_NAME),
@@ -95,9 +94,9 @@ test("org display name write path persists and is audited @p1 @settings", async 
   // --- restore the original name through the same UI path (shared org) ---
   await profile.setDisplayName(original!);
   await profile.save();
-  // The saved card from the FIRST save is still on screen (component state),
-  // so require the button back to its settled state too — it is only
-  // re-enabled once the PATCH has resolved.
+  // The second save hides and re-shows the saved card (component resets
+  // `saved` on submit) and disables the button while the PATCH is in flight,
+  // so require the card visible AND the button re-enabled.
   await poll(
     async () => {
       await expect(profile.savedMessage()).toBeVisible();

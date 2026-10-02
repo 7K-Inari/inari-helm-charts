@@ -9,7 +9,7 @@
 //
 // As dev-admin in tenant "E2E Org" (slug e2e-org): point the org's git
 // config at a NEW unique state repo (e2e-org/e2e-<runId>-*-state) through
-// Settings → Git, save, then poll GET /tenants/{org}/git-config
+// Settings → Git, save, then poll GET /api/v1/tenants/{org}/git-config
 // (helpers/api.ts) until the server reports the new value. The config is
 // SHARED, so the spec restores the original values through the same UI path
 // before it exits (spec independence — see README rule 4).
@@ -39,7 +39,7 @@ test("git config write path persists via the local provider @p1 @settings", asyn
   const api = await ApiClient.forPersona();
   const readConfig = () =>
     api
-      .get<{ config?: TenantGitConfig }>(`/tenants/${TENANT_SLUG}/git-config`)
+      .get<{ config?: TenantGitConfig }>(`/api/v1/tenants/${TENANT_SLUG}/git-config`)
       .then((b) => b.config);
   const original = await readConfig();
   expect(original?.repo, "current git config resolvable via API").toBeTruthy();
@@ -77,9 +77,9 @@ test("git config write path persists via the local provider @p1 @settings", asyn
   // --- restore the original config through the same UI path (shared org) ---
   await git.setRepo(original!.repo);
   await git.save();
-  // The saved card from the FIRST save is still on screen (component state),
-  // so require the button back to its settled state too — it is only
-  // re-enabled once the PUT has resolved.
+  // The second save hides and re-shows the saved card (component resets
+  // `saved` on submit) and disables the button while the PUT is in flight,
+  // so require the card visible AND the button re-enabled.
   await poll(
     async () => {
       await expect(git.savedMessage()).toBeVisible();
