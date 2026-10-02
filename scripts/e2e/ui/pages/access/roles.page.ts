@@ -51,14 +51,4 @@ export class RolesTabPage {
   editorCancelButton(): Locator {
     return this.page.getByRole("button", { name: "Cancel", exact: true });
   }
-
-  /** Inline error inside the role editor (destructive paragraph). */
-  editorError(): Locator {
-    return this.page.locator("p.text-destructive");
-  }
-
-  /** Tab-level error card (e.g. failed delete). */
-  tabError(): Locator {
-    return this.page.locator(".text-destructive").first();
-  }
 }
