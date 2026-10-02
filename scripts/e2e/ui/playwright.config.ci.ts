@@ -13,6 +13,8 @@ export default defineConfig({
   reporter: [
     ["junit", { outputFile: "test-results/junit.xml" }],
     ["html", { outputFolder: "playwright-report", open: "never" }],
+    // Machine-readable input for report-flakes.mjs (flake containment).
+    ["json", { outputFile: "test-results/report.json" }],
   ],
   use: {
     ...base.use,

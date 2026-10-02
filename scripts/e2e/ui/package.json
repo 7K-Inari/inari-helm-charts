@@ -8,6 +8,7 @@
     "test": "playwright test",
     "test:ci": "playwright test --config playwright.config.ci.ts",
     "test:seed": "node --test \"seed/**/*.test.mjs\"",
+    "test:flakes": "node --test report-flakes.test.mjs quarantine-issues.test.mjs",
     "lint": "tsc --noEmit"
   },
   "devDependencies": {
