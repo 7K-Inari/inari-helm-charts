@@ -458,8 +458,13 @@ jobs:
           kubectl -n inari get pods -o wide > /tmp/e2e-diag/pods.txt 2>&1
           kubectl -n inari get events --sort-by=.lastTimestamp > /tmp/e2e-diag/events.txt 2>&1
           kubectl -n inari describe pods > /tmp/e2e-diag/describe-pods.txt 2>&1
-          kubectl -n inari logs -l app.kubernetes.io/name=inari-server --prefix --tail=500 \
+          kubectl -n inari logs -l app.kubernetes.io/name=inari-server --prefix --tail=2000 \
             > /tmp/e2e-diag/inari-server.log 2>&1
+          kubectl -n inari logs statefulset/nats --all-containers --tail=500 > /tmp/e2e-diag/nats.log 2>&1
+          kubectl -n inari exec deploy/nats-box -- nats stream ls --server nats:4222 \
+            > /tmp/e2e-diag/nats-streams.txt 2>&1
+          kubectl -n inari exec deploy/nats-box -- nats stream info INARI_OUTBOX --server nats:4222 \
+            > /tmp/e2e-diag/nats-outbox-info.txt 2>&1
           kubectl -n inari-system logs deployment/inari-agent --tail=500 > /tmp/e2e-diag/inari-agent.log 2>&1
           kubectl -n inari logs deployment/inari-console --tail=100 > /tmp/e2e-diag/inari-console.log 2>&1
           kubectl -n inari logs deployment/inari-operator --tail=100 > /tmp/e2e-diag/inari-operator.log 2>&1
