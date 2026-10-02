@@ -42,9 +42,13 @@ export async function loginAsPersona(page: Page, persona: Persona): Promise<void
   await login.login(persona.username, persona.password);
   // The SPA still shows its "Loading…" gate while it fetches /me/* with the
   // fresh token; storageState is only useful once the session is fully
-  // established, so wait for boot before saving.
-  await page.waitForFunction(() => document.body.innerText !== "Loading…", {
-    timeout: 45_000,
-  });
+  // established, so wait for boot before saving. Require non-empty text:
+  // right after the OIDC redirect the body is still empty (""), which would
+  // trivially pass a plain !== "Loading…" check before the SPA has even
+  // processed the callback and persisted its tokens.
+  await page.waitForFunction(
+    () => document.body.innerText.trim().length > 0 && !document.body.innerText.includes("Loading…"),
+    { timeout: 45_000 },
+  );
   await page.context().storageState({ path: authFile(persona) });
 }

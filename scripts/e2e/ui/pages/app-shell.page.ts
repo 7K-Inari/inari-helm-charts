@@ -8,9 +8,13 @@ export class AppShellPage {
 
   /** Wait until the SPA has booted past its initial "Loading…" gate. */
   async waitForBoot(): Promise<void> {
-    await this.page.waitForFunction(() => document.body.innerText !== "Loading…", {
-      timeout: 45_000,
-    });
+    // Require non-empty text: on first paint the body is still empty (""),
+    // which would trivially pass a plain !== "Loading…" check before the
+    // SPA has rendered anything.
+    await this.page.waitForFunction(
+      () => document.body.innerText.trim().length > 0 && !document.body.innerText.includes("Loading…"),
+      { timeout: 45_000 },
+    );
   }
 
   /** Wait until no "Loading…" placeholder remains (post-navigation). */
