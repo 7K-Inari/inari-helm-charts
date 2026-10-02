@@ -354,8 +354,9 @@ jobs:
         #   2. There is no gateway in kind and the server sends no CORS
         #      headers, so lib/ui-proxy.mjs merges console + API onto one origin
         #      (the production topology) for the browser.
-        # The inari-ui client redirect-whitelist below stays here until the
-        # W3 seed script absorbs it (see scripts/e2e/ui/README.md).
+        # Persona seeding (KC users + e2e-org join + role memberships via the
+        # inari-server API) and the inari-ui redirect whitelist live in
+        # scripts/e2e/ui/seed/seed-personas.mjs (see scripts/e2e/ui/README.md).
         working-directory: bundle
         run: |
           set -euo pipefail
@@ -368,18 +369,10 @@ jobs:
           kubectl -n inari port-forward svc/keycloak-service 18091:8080 >/dev/null 2>&1 &
           sleep 3
 
-          # Allow the browser origin on the realm-imported inari-ui client.
-          SECRET=$(kubectl -n inari get secret inari-keycloak-admin -o jsonpath='{.data.client-secret}' | base64 -d)
-          AT=$(curl -sf "$KC/realms/inari/protocol/openid-connect/token" \
-            -d grant_type=client_credentials -d client_id=inari-platform-admin \
-            -d client_secret="$SECRET" | jq -r .access_token)
-          CID=$(curl -sf -H "Authorization: Bearer $AT" \
-            "$KC/admin/realms/inari/clients?clientId=inari-ui" | jq -r '.[0].id')
-          curl -sf -H "Authorization: Bearer $AT" "$KC/admin/realms/inari/clients/$CID" \
-            | jq '.redirectUris += ["http://127.0.0.1:8080/*"] | .redirectUris |= unique
-                  | .webOrigins += ["http://127.0.0.1:8080"] | .webOrigins |= unique' \
-            | curl -sf -X PUT -H "Authorization: Bearer $AT" -H "Content-Type: application/json" \
-                -d @- "$KC/admin/realms/inari/clients/$CID"
+          # Seed the e2e personas (idempotent) and whitelist the browser
+          # origin on the realm-imported inari-ui client. Fails the job here —
+          # before browser install — if the membership API is broken (P0).
+          node scripts/e2e/ui/seed/seed-personas.mjs
 
           # Point the SPA's Keycloak URL at the browser-reachable forward.
           helm upgrade inari-console charts/inari-console --namespace inari \
