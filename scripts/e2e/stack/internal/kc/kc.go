@@ -85,32 +85,6 @@ func (c *Client) PasswordToken(username, password, scope string) (string, error)
 	)
 }
 
-// FindUser returns the Keycloak user ID for username ("" when absent).
-func (c *Client) FindUser(adminToken, username string) (string, error) {
-	var users []struct {
-		ID string `json:"id"`
-	}
-	if err := c.get("/admin/realms/inari/users?username="+username, adminToken, &users); err != nil {
-		return "", err
-	}
-	if len(users) == 0 {
-		return "", nil
-	}
-	return users[0].ID, nil
-}
-
-// GroupByPath returns the ID of a group addressed by its full path
-// (e.g. "tenant-e2e-org/viewers").
-func (c *Client) GroupByPath(adminToken, path string) (string, error) {
-	var grp struct {
-		ID string `json:"id"`
-	}
-	if err := c.get("/admin/realms/inari/group-by-path/"+path, adminToken, &grp); err != nil {
-		return "", err
-	}
-	return grp.ID, nil
-}
-
 // ClientSecret returns the current secret of the OIDC client with the given
 // clientId (e.g. the per-cluster agent client).
 func (c *Client) ClientSecret(adminToken, clientID string) (string, error) {
