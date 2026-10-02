@@ -38,7 +38,7 @@ import { TeamsRolesTabPage } from "../../pages/access/teams-roles.page";
 import { AppShellPage } from "../../pages/app-shell.page";
 import { CatalogPage } from "../../pages/catalog.page";
 import { DeploysPage } from "../../pages/deploys.page";
-import { SettingsPage } from "../../pages/settings.page";
+import { SettingsPage } from "../../pages/settings/settings.page";
 
 // --- Permission bundles (regression guard) ---------------------------------
 //
@@ -222,16 +222,16 @@ for (const personaCase of MATRIX) {
         await expect(page).toHaveURL(new RegExp(`/${TENANT_SLUG}/settings/`));
         if (personaCase.role === "admin") {
           // Admin-only settings entries are visible; write controls enabled.
-          await expect(settings.navLink("OIDC Clients")).toBeVisible();
-          await settings.navLink("OIDC Clients").click();
+          await expect(settings.navItem("OIDC Clients")).toBeVisible();
+          await settings.navItem("OIDC Clients").click();
           await expect(settings.heading("OIDC clients")).toBeVisible();
           await expect(
             page.getByRole("button", { name: "New client", exact: true }),
           ).toBeEnabled();
         } else {
           // Admin-only entries are filtered out of the settings nav.
-          await expect(settings.navLink("OIDC Clients")).toHaveCount(0);
-          await expect(settings.navLink("IdP Brokering")).toHaveCount(0);
+          await expect(settings.navItem("OIDC Clients")).toHaveCount(0);
+          await expect(settings.navItem("IdP Brokering")).toHaveCount(0);
         }
       });
 

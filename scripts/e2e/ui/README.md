@@ -31,14 +31,24 @@ scripts/e2e/ui/
 │   │                           #   negative-path assertions — see rule 5 below)
 ├── pages/
 │   ├── login.page.ts           # KC 26 two-step form (username → submit → password)
-│   ├── app-shell.page.ts       # boot gate, tenant cards, sidebar nav, "Loading…" waits
-│   ├── settings.page.ts        # Settings layout: admin-filtered nav, read-only notice
+│   ├── app-shell.page.ts       # boot gate, tenant cards, sidebar nav, tenant switcher,
+│   │                           #   "Loading…" waits
 │   ├── catalog.page.ts         # Catalog browse marker
 │   ├── deploys.page.ts         # Deploys (resource inventory) marker
-│   └── access/                 # Access section + Members / Teams & Roles / Roles / Identity tabs
+│   ├── access/                 # Access section + Members / Teams & Roles / Roles / Identity tabs
+│   ├── organizations/          # create-organization form (ids from inari-ui)
+│   └── settings/               # Settings inner nav (admin-filtered), read-only notice,
+│                               #   Org profile / Git config sub-pages
 └── specs/
     ├── smoke/
     │   └── access-tabs.spec.ts # @p0 @smoke — the four RBAC tabs render their markers
+    ├── settings/
+    │   ├── org-profile.spec.ts # @p1 @settings — display-name write path: save → reload →
+    │   │                       #   persisted → audit event via the API; restores the shared
+    │   │                       #   org's original name at the end (spec independence)
+    │   └── git-config.spec.ts  # @p1 @settings — state-repo write path through the local git
+    │                           #   provider (INARI_GIT_PROVIDER=local, hostPath root from
+    │                           #   golden-path.sh); restores the original config at the end
     └── rbac/
         ├── role-lifecycle.spec.ts # @p0 @rbac — custom role CRUD, team→role mapping,
         │                          #   propagation to e2e-member's /me/permissions,
@@ -49,7 +59,17 @@ scripts/e2e/ui/
                                        #   role persona's control set vs its migration-0029
                                        #   bundle, negative direct-URL nav, bundle regression
                                        #   guard (API)
+    └── tenants/
+        └── onboarding.spec.ts    # @p1 @tenants — org creation through the console UI,
+                                  #   tenant landing, Access tabs in the fresh org,
+                                  #   API metadata assertion, duplicate-slug 409 (P1-4)
 ```
+
+The onboarding spec **intentionally does not delete** the org it creates:
+P1-5 (tenant switching) discovers it by name convention — slug
+`e2e-<runId>-*-onb` (the `uniqueName("onb")` suffix), display name
+`E2E <slug>` — via `GET /api/v1/tenants`. CI runs on a fresh cluster per
+workflow run, so the leftover is harmless.
 
 The role-lifecycle spec's propagation step polls `GET /me/permissions` with
 `e2e-member`'s token for up to **120s** (5s interval) — that budget covers

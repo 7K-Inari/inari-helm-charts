@@ -3,7 +3,7 @@
 //
 // Runs as one release-e2e workflow step between stack bring-up (golden-path)
 // and the Playwright run, and is safe to re-run against a kept
-// (KEEP_CLUSTER=true) kind cluster. It owns three things:
+// (KEEP_CLUSTER=true) kind cluster. It owns four things:
 //
 //   1. The inari-ui client redirect whitelist (absorbed from the former
 //      inline workflow shell block): the realm re-import wipes the
@@ -17,6 +17,10 @@
 //      groups, never direct DB — so seeding exercises the real membership
 //      path. A broken roles/members API fails this script loudly: that is a
 //      P0-class signal, not a seed bug.
+//   4. A default git-config for e2e-org (PUT /tenants/{org}/git-config) —
+//      the server leaves it unset (404) until the first write and there is
+//      no DELETE, while the git-config spec saves and restores the ORIGINAL
+//      repo. Seeded once, idempotently (see ensureGitConfig).
 //
 // Personas (one per ADR-0013 built-in role; bundles verified in inari-server
 // migration 0029_roles.sql):
@@ -312,6 +316,27 @@ async function ensureRoleAssignments(token, userIds) {
   die(`role assignments still pending after 120s: ${[...pending.keys()].join(", ")} (users projection not observing KC org joins?)`);
 }
 
+// The Settings git-config spec (@p1 @settings) restores the tenant's
+// ORIGINAL state repo after exercising the write path, so e2e-org needs a
+// config to exist before the suite runs. The server does not create one on
+// tenant creation (GET /git-config -> 404 "git config not set" until the
+// first PUT) and there is no DELETE, so seed a stable default once —
+// idempotent, skipped when a config is already present.
+async function ensureGitConfig(token) {
+  const url = `${API_URL}/tenants/${TENANT}/git-config`;
+  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+  if (res.ok) {
+    log(`git-config for ${TENANT} already set — skipped`);
+    return;
+  }
+  if (res.status !== 404) die(`GET ${url} -> ${res.status}: ${await res.text()}`);
+  await api("PUT", url, {
+    token,
+    body: { repo: `${TENANT}/${TENANT}-inari-state`, commitPolicy: "direct" },
+  });
+  log(`git-config for ${TENANT}: seeded ${TENANT}/${TENANT}-inari-state (direct)`);
+}
+
 async function main() {
   log(`seeding personas against KC=${KC_URL} API=${API_URL} tenant=${TENANT}`);
   const at = await kcAdminToken();
@@ -325,7 +350,9 @@ async function main() {
     await joinOrganization(at, userIds[p.username], p.username);
   }
 
-  await ensureRoleAssignments(await userToken(), userIds);
+  const ut = await userToken();
+  await ensureRoleAssignments(ut, userIds);
+  await ensureGitConfig(ut);
   log("OK — all personas seeded");
 }
 

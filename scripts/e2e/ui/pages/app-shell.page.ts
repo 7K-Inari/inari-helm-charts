@@ -35,4 +35,14 @@ export class AppShellPage {
   async nav(name: string): Promise<void> {
     await this.page.getByRole("link", { name, exact: true }).first().click();
   }
+
+  /**
+   * Open the "Create organization" page via the header tenant switcher
+   * (inari-ui src/layout/tenant-switcher.tsx — the menu item renders only
+   * for callers with canCreateOrganizations).
+   */
+  async openCreateOrganization(): Promise<void> {
+    await this.page.getByRole("button", { name: "Tenant context switcher" }).click();
+    await this.page.getByRole("menuitem", { name: "Create organization" }).click();
+  }
 }
