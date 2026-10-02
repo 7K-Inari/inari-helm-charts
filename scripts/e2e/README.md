@@ -2,7 +2,11 @@
 
 Canonical home of the Inari e2e suites (relocated from the inari-server
 repo's `e2e/` directory). `.github/workflows/release-e2e.yaml` is the CI gate
-that runs them. Docs/markdown-only changes pushed to a Release PR
+that runs them; its golden-path legs and the nightly both delegate the full
+stack leg (bring-up → follow-on suites → artifacts → teardown) to the
+reusable `.github/workflows/e2e-stack.yaml` (`workflow_call`, migration
+phase 4 — one shared bring-up definition, no YAML duplication).
+Docs/markdown-only changes pushed to a Release PR
 intentionally skip the e2e jobs (the workflow's `gate` job detects them and
 reports success) — e2e "not running" on such pushes is expected, not a CI
 outage. Suites are organized by surface (per the approved e2e
@@ -35,12 +39,31 @@ scripts/e2e/
 
 | Suite | Path | Runner | CI trigger | Gating |
 |---|---|---|---|---|
-| Golden path (fast leg) | `stack/` (Go suite, `E2E_HA=0`) | `go test -tags=e2e -count=1 -timeout 40m ./...` from `scripts/e2e/stack/` (nested module — won't resolve from the repo root): provisions the whole kind stack in-process, then asserts | `release-e2e.yaml` job `golden-path` (matrix `ha: false`) on Release PRs | Yes — Release-PR gate |
-| Golden path (HA leg) | `stack/` (Go suite, `E2E_HA=1` flips helm replica values + unlocks disruption subtests) | same, with `E2E_HA=1` + `SERVER_MIGRATIONS_DIR` | `release-e2e.yaml` job `golden-path` (matrix `ha: true`) on Release PRs | Yes — Release-PR gate |
-| API schema conformance | `api/api_schema_e2e_test.go` | `go test -tags=e2e` inside the inari-server checkout at the pinned tag | `release-e2e.yaml` step "Run api-schema e2e against the live stack" (after the stack suite) | Yes — Release-PR gate |
-| Console UI e2e | `ui/` (Playwright Test) + `lib/ui-proxy.mjs` + `ui/seed/seed-personas.mjs` | `npx playwright test --config playwright.config.ci.ts --grep @p0 --grep-invert @quarantine` in `ui/` | `release-e2e.yaml` step "Run console UI e2e (Playwright)" on BOTH HA matrix legs (after api-schema) | Yes — Release-PR gate |
-| Console UI e2e (full, incl. quarantine) | `ui/` (Playwright Test) | `npx playwright test --config playwright.config.ci.ts --grep "@p0\|@p1\|@p2"` (includes `@quarantine`, `continue-on-error`) | `.github/workflows/e2e-nightly.yaml` (cron 03:17 UTC + `workflow_dispatch`) | No — nightly only, non-blocking |
+| Golden path (fast leg) | `stack/` (Go suite, `E2E_HA=0`) | `go test -tags=e2e -count=1 -timeout 40m -json ./...` from `scripts/e2e/stack/` (nested module — won't resolve from the repo root): provisions the whole kind stack in-process, then asserts. Quarantined Go tests skip (no `-include-quarantined`). | `release-e2e.yaml` job `golden-path` (matrix `ha: false`) → reusable `e2e-stack.yaml` (`mode: gate`) on Release PRs | Yes — Release-PR gate |
+| Golden path (HA leg) | `stack/` (Go suite, `E2E_HA=1` flips helm replica values + unlocks disruption subtests) | same, with `E2E_HA=1` + `SERVER_MIGRATIONS_DIR` | `release-e2e.yaml` job `golden-path` (matrix `ha: true`) → `e2e-stack.yaml` (`mode: gate`) on Release PRs | Yes — Release-PR gate |
+| API schema conformance | `api/api_schema_e2e_test.go` | `go test -tags=e2e` inside the inari-server checkout at the pinned tag | `e2e-stack.yaml` step "Run api-schema e2e against the live stack" (after the stack suite, `mode: gate` only) | Yes — Release-PR gate |
+| Console UI e2e | `ui/` (Playwright Test) + `lib/ui-proxy.mjs` + `ui/seed/seed-personas.mjs` | `npx playwright test --config playwright.config.ci.ts --grep @p0 --grep-invert @quarantine` in `ui/` | `e2e-stack.yaml` step "Run console UI e2e (Playwright)" on BOTH gate HA matrix legs (after api-schema) | Yes — Release-PR gate |
+| Golden path (nightly, incl. quarantined Go tests) | `stack/` (Go suite) | same as the fast leg, plus `-args -include-quarantined` so `suite.Quarantined` tests run | `e2e-nightly.yaml` job `nightly-stack` → `e2e-stack.yaml` (`mode: nightly`, cron 03:17 UTC + `workflow_dispatch`) | No — nightly only, non-blocking |
+| Console UI e2e (full, incl. quarantine) | `ui/` (Playwright Test) | `npx playwright test --config playwright.config.ci.ts --grep "@p0\|@p1\|@p2"` (includes `@quarantine`, `continue-on-error`) | `e2e-nightly.yaml` job `nightly-stack` → `e2e-stack.yaml` (`mode: nightly`) — same single bring-up as the Go suite | No — nightly only, non-blocking |
 | kubectl access | `kubectl/kubectl-access.sh` | bash script (docker etcd + kube-apiserver; no kind) | not wired into CI yet | No — manual scenario |
+
+## Workflow call graph
+
+```
+release-e2e.yaml  (Release-PR gate: gate → resolve → server-integration)
+└── golden-path (matrix ha:[false,true])  ──uses──▶ e2e-stack.yaml (mode=gate, 7d artifacts)
+
+e2e-nightly.yaml  (cron + dispatch, non-blocking)
+├── resolve (appVersion → server tag)
+├── nightly-stack                       ──uses──▶ e2e-stack.yaml (mode=nightly, 14d artifacts)
+└── quarantine-sweep (needs: nightly-stack; issues:write; no cluster needed)
+```
+
+Artifact retention: gate UI artifacts `ui-e2e-ha-{false,true}` (failure-only,
+compression-level 0) and flake reports `ui-e2e-flakes-ha-{false,true}` 7 days;
+Go test JSON + cluster diagnostics `golden-path-go-ha-{false,true}`
+failure-only 7 days; nightly artifacts (`ui-e2e-nightly`,
+`ui-e2e-flakes-nightly`, `golden-path-go-nightly`) 14 days.
 
 ## Flakiness containment
 
@@ -62,6 +85,13 @@ The gate NEVER runs a quarantined test — the direct analog of inari-server's
   excluded from the gate (`--grep-invert @quarantine`) and run only in the
   nightly. De-quarantine (remove the tag, close the issue) once the test
   has been stable in the nightly for ~2 weeks.
+- **Quarantined Go tests** (stack suite): call `suite.Quarantined(t,
+  "flake: <reason>, issue #NNN")` as the first statement of the flaky
+  test/subtest body (`stack/suite/quarantine.go`). It skips unless the suite
+  runs with `-args -include-quarantined` — the runtime-flag analog of
+  inari-server's `flaky` build tag. The gate NEVER sets the flag; the
+  nightly (`mode: nightly`) always does. De-quarantine by removing the
+  `Quarantined` call once stable in the nightly for ~2 weeks.
 - **Quarantine automation** (`ui/quarantine-issues.mjs`, nightly only):
   aggregates the last 7 days of `ui-e2e-flakes-*` artifacts; a test flaky in
   2+ nightly runs within the window gets an issue titled
@@ -102,7 +132,9 @@ Env knobs (defaults in `stack/suite/provision.go`): `CLUSTER_NAME`,
 `NAMESPACE`, `TENANT`, `SERVER_IMAGE` / `AGENT_IMAGE`, `HELM_CHARTS_DIR`
 plus the per-chart `*_CHART_DIR` overrides, `VAULT_DEV_TOKEN`,
 `INARI_E2E_CACHE_BACKEND` (memory|redis; redis default on the HA leg),
-`E2E_PROVISION_ONLY=1` (bring-up without assertions — the nightly uses it).
+`E2E_PROVISION_ONLY=1` (bring-up without assertions — local use only; CI
+no longer uses it: the nightly asserts too, incl. quarantined tests via
+`-args -include-quarantined`).
 
 ### API schema conformance
 
