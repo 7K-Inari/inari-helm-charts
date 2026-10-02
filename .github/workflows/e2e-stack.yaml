@@ -102,14 +102,14 @@ jobs:
       IMAGE_REF: ghcr.io/7k-inari/inari-server:${{ inputs.image-tag }}
     steps:
       - name: Checkout inari-server (Go suites + migrations dir)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: 7K-Inari/inari-server
           ref: ${{ inputs.server-src-ref }}
           path: inari-server
 
       - name: Checkout bundle (charts under test)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.bundle-ref }}
           path: bundle
@@ -127,7 +127,7 @@ jobs:
           fi
 
       - name: Checkout inari-agent
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: 7K-Inari/inari-agent
           ref: ${{ steps.agent.outputs.ref }}
@@ -146,7 +146,7 @@ jobs:
           fi
 
       - name: Checkout inari-operator (operator + console smoke charts)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: 7K-Inari/inari-operator
           ref: ${{ steps.operator.outputs.ref }}
@@ -157,14 +157,14 @@ jobs:
         # module (the nested module under scripts/e2e/stack).
         # cache-dependency-path: the module is nested, so setup-go's
         # default go.sum discovery would miss it and cache nothing.
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: bundle/scripts/e2e/stack/go.mod
           cache-dependency-path: bundle/scripts/e2e/stack/go.sum
 
       - name: Install cosign
         if: inputs.build-from-ref == 'none' && inputs.cosign-verify
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
 
       - name: Pull and verify published server image
         # Prefer the cosign-signed artifact that actually ships over a
@@ -215,7 +215,7 @@ jobs:
         # extraMounts config for the git hostPath), so only the binary is
         # installed here. One cluster name for both modes — per-runner
         # isolation makes a nightly-specific name unnecessary.
-        uses: helm/kind-action@v1.12.0
+        uses: helm/kind-action@06c1ae10762d3b9c1644e7fe69596ae519e015a2 # v1.15.0
         with:
           cluster_name: inari-e2e
           install_only: true
@@ -369,7 +369,7 @@ jobs:
           hashFiles('bundle/scripts/e2e/ui/package-lock.json') }}" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/ms-playwright
           key: ${{ steps.pwkey.outputs.key }}
@@ -427,7 +427,7 @@ jobs:
 
       - name: Upload flake report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ui-e2e-flakes-${{ env.LEG }}
           path: bundle/scripts/e2e/ui/test-results/flake-report.json
@@ -438,7 +438,7 @@ jobs:
         # Gate: failure-only (PR #63 convention). Nightly: always — the
         # full results feed the flake/quarantine triage.
         if: failure() || inputs.mode == 'nightly'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ui-e2e-${{ env.LEG }}
           path: |
@@ -488,7 +488,7 @@ jobs:
 
       - name: Upload Go test JSON + diagnostics on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: golden-path-go-${{ env.LEG }}
           path: |
