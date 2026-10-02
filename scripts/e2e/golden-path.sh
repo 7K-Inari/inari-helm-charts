@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# e2e golden path (CI gate): platform stack on kind → tenant → cluster
-# registration → agent connect → capabilities streaming.
+# e2e golden path (CI gate), PROVISIONING ONLY: platform stack on kind →
+# Keycloak seeding → tenant → cluster registration → agent install.
+# Assertions live in the Go stack suite (scripts/e2e/stack, run with
+# `go test -tags=e2e`) — phase 1 of the shell→Go migration (parent design
+# §3). This script writes a handoff file ($E2E_HANDOFF_PATH) the suite
+# consumes; provisioning (kind create, helm installs, KC seeding) moves to
+# Go in phases 2–3.
 #
 # Mirrors the manually validated flow. All HTTP calls run through a toolbox
 # pod in the cluster (kubectl exec) so the script is immune to
@@ -28,20 +33,20 @@
 #   OPERATOR_CHART_DIR (default
 #     $HELM_CHARTS_DIR/../inari-operator/charts/inari-operator — the
 #     inari-operator repo checkout, resolved the same way as the agent chart)
-#   SERVER_MIGRATIONS_DIR (directory with the server's [0-9]*.sql goose
-#     migrations; only used by the HA(c) assertion. No in-repo default —
-#     the e2e workflow points it at the inari-server checkout)
 #   KEEP_CLUSTER=true to skip teardown
+#   E2E_HANDOFF_PATH — when set, write the Go-suite handoff JSON here and
+#     keep the git host dir after exit (the suite reads materialized state
+#     repos from it)
 #   INARI_E2E_CACHE_BACKEND=memory|redis (default memory; default redis when
 #     INARI_HA=true) — redis installs the chart's bitnami/redis subchart and
 #     points the cache layer at it
 #   INARI_HA=true (default false) — HA mode (Wave 2, 99.9% initiative):
 #     inari-server replicaCount=2 via the W1 chart knobs (probes, PDB,
 #     anti-affinity, rollingUpdate maxUnavailable: 0), OpenFGA
-#     replicaCount=2, plus clearly delimited HA-only disruption assertions
-#     after the golden path passes (pod kill, rollout restart under
-#     traffic, migration-lock race, leader-lease single-execution, agent
-#     stream fencing). The non-HA path is byte-identical in behavior and
+#     replicaCount=2. The HA-only disruption assertions (pod kill, rollout
+#     restart under traffic, migration-lock race, leader-lease
+#     single-execution, agent stream fencing) now live in the Go stack
+#     suite (E2E_HA=1). The non-HA path is byte-identical in behavior and
 #     timing and stays the fast default gate. NATS is 3-node JetStream in
 #     BOTH modes (W1 provisioned it HA from day one). The inari-console +
 #     inari-operator charts install alongside the server with smoke-level
@@ -70,13 +75,10 @@ SERVER_CHART_DIR="${SERVER_CHART_DIR:-$HELM_CHARTS_DIR/charts/inari-server}"
 CONSOLE_CHART_DIR="${CONSOLE_CHART_DIR:-$HELM_CHARTS_DIR/charts/inari-console}"
 AGENT_CHART_DIR="${AGENT_CHART_DIR:-$HELM_CHARTS_DIR/../inari-agent/charts/inari-agent}"
 OPERATOR_CHART_DIR="${OPERATOR_CHART_DIR:-$HELM_CHARTS_DIR/../inari-operator/charts/inari-operator}"
-# SERVER_MIGRATIONS_DIR: the server's goose migrations, counted by the
-# HA(c) assertion. Not part of this repo — the e2e workflow exports it
-# pointing at the inari-server checkout (kept for the Go test suites).
-SERVER_MIGRATIONS_DIR="${SERVER_MIGRATIONS_DIR:-}"
 NAMESPACE="${NAMESPACE:-inari}"
 TENANT="${TENANT:-e2e-org}"
 KEEP_CLUSTER="${KEEP_CLUSTER:-false}"
+E2E_HANDOFF_PATH="${E2E_HANDOFF_PATH:-}"
 TOOLS=golden-path-tools
 KC_FQDN="keycloak-service.${NAMESPACE}.svc:8080"
 SERVER_SVC="inari-server"
@@ -108,10 +110,6 @@ need docker; need kubectl; need helm; need jq; need kind; need git; need base64;
 # Component chart-dir sanity checks (die is defined above; INARI_HA too).
 [ -d "$CONSOLE_CHART_DIR" ] || die "CONSOLE_CHART_DIR not found: $CONSOLE_CHART_DIR (set CONSOLE_CHART_DIR)"
 [ -d "$OPERATOR_CHART_DIR" ] || die "OPERATOR_CHART_DIR not found: $OPERATOR_CHART_DIR (set OPERATOR_CHART_DIR)"
-if $INARI_HA; then
-  [ -n "$SERVER_MIGRATIONS_DIR" ] && [ -d "$SERVER_MIGRATIONS_DIR" ] \
-    || die "INARI_HA requires SERVER_MIGRATIONS_DIR pointing at inari-server's internal/db/migrations"
-fi
 
 # Host-side git root for INARI_GIT_PROVIDER=local: the server writes real
 # bare repos here (mounted into the kind node), and this script clones and
@@ -127,7 +125,11 @@ chmod 0777 "$GIT_HOST_DIR"
 cleanup() {
   kubectl -n "$NAMESPACE" delete pod "$TOOLS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   $KEEP_CLUSTER || kind delete cluster --name "$CLUSTER_NAME" >/dev/null 2>&1 || true
-  $KEEP_CLUSTER || rm -rf "$GIT_HOST_DIR" >/dev/null 2>&1 || true
+  # The git host dir must survive script exit when a Go-suite handoff was
+  # requested: the stack suite reads the materialized state repos from it.
+  if ! $KEEP_CLUSTER && [ -z "$E2E_HANDOFF_PATH" ]; then
+    rm -rf "$GIT_HOST_DIR" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -432,16 +434,6 @@ grep -q 'apiBaseUrl: "/api/v1"' <<<"$CONSOLE_CONFIG" \
   || die "console config.js apiBaseUrl is not \"/api/v1\": $CONSOLE_CONFIG"
 log "console serves the SPA and its config targets http://$KC_FQDN (realm inari, client inari-ui, api /api/v1)"
 
-# psql_inari runs SQL against the platform database via the CNPG primary
-# pod (the toolbox image has curl only; the connection URI never leaves the
-# cluster). Used by the outbox drain check and the HA(c)/(d1) blocks below.
-psql_inari() {
-  local uri primary
-  uri=$(kubectl -n "$NAMESPACE" get secret inari-db -o jsonpath='{.data.inari-uri}' | base64 -d)
-  primary=$(kubectl -n "$NAMESPACE" get cluster.postgresql.cnpg.io/postgresql -o jsonpath='{.status.currentPrimary}')
-  kubectl -n "$NAMESPACE" exec "$primary" -c postgres -- psql "$uri" -tAc "$1"
-}
-
 log "verifying the INARI_OUTBOX stream formed (R=3) on the external cluster"
 # The server ensures the stream at boot (ADR-0014); the monitor CLI lives in
 # the nats-box pod deployed with the NATS chart.
@@ -457,39 +449,6 @@ for i in $(seq 1 24); do
   sleep 5
   [ "$i" = 24 ] && die "INARI_OUTBOX stream never formed at R=3 (stream info: ${STREAM:-empty})"
 done
-
-# ==================== HA-only (c): fresh 0→2 scale-up ====================
-# The install above IS the fresh 0→2 scale-up on a clean namespace: both
-# replicas boot simultaneously against an empty database and the W1
-# migration advisory lock (ADR-0010) serializes their goose runs. The
-# asserted outcome is the one the lock exists to guarantee: with
-# concurrent first boots, every migration is applied exactly once and
-# both replicas become Ready. Boot-LOG evidence is deliberately NOT
-# asserted: goose only engages (and logs) the locker while migrations
-# are pending, and pods that restart during stack bring-up (Keycloak
-# warmup 500s rotate logs away) leave no trace — the lock mechanics
-# themselves are covered deterministically by W1's internal/db
-# integration tests. The acquisition-line count is printed as soft CI
-# evidence only.
-if $INARI_HA; then
-  log "HA(c): fresh 0->2 scale-up — migrations serialized by the advisory lock, both replicas ready"
-  kubectl -n "$NAMESPACE" wait --for=condition=ready pod \
-    -l app.kubernetes.io/name=inari-server --timeout=300s
-  EXPECTED_MIGRATIONS=$(find "$SERVER_MIGRATIONS_DIR" -name '[0-9]*.sql' | wc -l)
-  APPLIED_MIGRATIONS=$(psql_inari "SELECT max(version_id) FROM goose_db_version")
-  [ "$APPLIED_MIGRATIONS" = "$EXPECTED_MIGRATIONS" ] \
-    || die "HA(c): goose_db_version is at $APPLIED_MIGRATIONS, want $EXPECTED_MIGRATIONS (concurrent first-boot migrations did not converge)"
-  LOCK_LINES=$(kubectl -n "$NAMESPACE" logs -l app.kubernetes.io/name=inari-server --tail=-1 2>/dev/null | grep -c 'db: migration lock acquired' || true)
-  log "HA(c): migrations converged at version $APPLIED_MIGRATIONS; advisory-lock acquisitions visible in current logs: ${LOCK_LINES:-0} (informational)"
-  # The W1 chart knobs at replicaCount >= 2: PDB (minAvailable: 1) and
-  # rollingUpdate maxUnavailable: 0.
-  kubectl -n "$NAMESPACE" get pdb inari-server >/dev/null \
-    || die "HA(c): PodDisruptionBudget inari-server missing at replicaCount=2"
-  [ "$(kubectl -n "$NAMESPACE" get pdb inari-server -o jsonpath='{.spec.minAvailable}')" = "1" ] \
-    || die "HA(c): pdb minAvailable != 1"
-  kubectl -n "$NAMESPACE" get deployment inari-server -o jsonpath='{.spec.strategy.rollingUpdate.maxUnavailable}' \
-    | grep -q '^0' || die "HA(c): rollingUpdate.maxUnavailable is not 0"
-fi
 
 log "starting toolbox pod"
 kubectl -n "$NAMESPACE" delete pod "$TOOLS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
@@ -596,34 +555,6 @@ xcurl -o /dev/null -X PUT \
   "http://keycloak-service:8080/admin/realms/inari/users/$KC_UID/groups/$GROUP_ID" \
   || die "failed to add dev-admin to platform-admins"
 
-log "waiting for the platform group sync to grant dev-admin org_creator"
-if $INARI_HA; then
-  # HA(c) companion assertion: the replicas' FGA store bootstrap must have
-  # converged on exactly ONE store named "inari". A duplicate means the
-  # bootstrap lease (authz-fga-bootstrap) failed and each replica pinned
-  # its own store — split-brain authz (tuple writes invisible to the other
-  # pod's Checks). stores[0] below would silently hide that.
-  FGA_STORE_COUNT=$(xcurl "http://openfga:8080/stores" | jq '[.stores[] | select(.name=="inari")] | length')
-  [ "$FGA_STORE_COUNT" = "1" ] \
-    || die "HA(c): $FGA_STORE_COUNT OpenFGA stores named 'inari' (store bootstrap race — replicas would split-brain)"
-fi
-FGA_STORE=$(xcurl "http://openfga:8080/stores" | jq -r '.stores[0].id')
-# Bounded poll: the org_creator tuple lands via the outbox → tuple-writer
-# path (app-level), not through any k8s condition.
-ORG_CREATOR=false
-for i in $(seq 1 18); do
-  ORG_CREATOR=$(xcurl -X POST "http://openfga:8080/stores/$FGA_STORE/check" -H "Content-Type: application/json" \
-    -d "{\"tuple_key\":{\"user\":\"user:$KC_UID\",\"relation\":\"org_creator\",\"object\":\"platform:inari\"}}" | jq -r .allowed 2>/dev/null || echo false)
-  [ "$ORG_CREATOR" = "true" ] && break
-  sleep 5
-done
-[ "$ORG_CREATOR" = "true" ] || die "org_creator tuple never appeared (platform group sync not running?)"
-
-log "verifying /me/permissions reflects the org_creator tuple"
-PERMS=$(xcurl -H "Authorization: Bearer $(user_token)" "$API/me/permissions" 2>/dev/null || true)
-jq -e '.canCreateOrganizations == true' <<<"$PERMS" >/dev/null \
-  || die "me/permissions = $PERMS, want canCreateOrganizations=true"
-
 log "creating tenant '$TENANT'"
 # Bounded poll: retries cover transient token/Keycloak warm-up errors; the
 # outcome is an API response, not a k8s condition.
@@ -641,55 +572,6 @@ done
 jq -e '.organization.keycloakOrgId' <<<"$TENANT_RESP" >/dev/null \
   || die "tenant creation failed after retries: $TENANT_RESP"
 ORG_KC_ID=$(jq -r '.organization.keycloakOrgId' <<<"$TENANT_RESP")
-
-log "verifying creator auto-membership seeded OpenFGA (outbox → tuple writer)"
-# CreateTenant adds the creator to the Keycloak org + platform-team group and
-# emits membership.added; the outbox dispatcher seeds the team membership and
-# team→org role tuples asynchronously — poll instead of racing it.
-FGA_STORE=$(xcurl "http://openfga:8080/stores" | jq -r '.stores[0].id')
-ALLOWED=false
-for i in $(seq 1 18); do
-  ALLOWED=$(xcurl -X POST "http://openfga:8080/stores/$FGA_STORE/check" -H "Content-Type: application/json" \
-    -d "{\"tuple_key\":{\"user\":\"user:$KC_UID\",\"relation\":\"tenant_admin\",\"object\":\"organization:$ORG_KC_ID\"}}" | jq -r .allowed 2>/dev/null || echo false)
-  [ "$ALLOWED" = "true" ] && break
-  sleep 5
-done
-[ "$ALLOWED" = "true" ] || die "OpenFGA check failed (creator auto-membership did not propagate via outbox)"
-
-log "verifying the outbox drained through the NATS relay"
-# Tenant creation emitted several events; the relay marks rows published
-# only after the JetStream PubAck, so a drained backlog proves relay ->
-# stream -> consumer delivery end-to-end (ADR-0014).
-for i in $(seq 1 24); do
-  [ "$(psql_inari "SELECT count(*) FROM outbox WHERE published_at IS NULL")" = "0" ] && break
-  sleep 5
-  [ "$i" = 24 ] && die "outbox did not drain through the NATS relay"
-done
-
-log "verifying /metrics exposes the cache layer series (backend: $CACHE_BACKEND)"
-# Tenant creation above already drove org lookups + FGA checks through the
-# caches, so the series exist; the scrape just must surface them.
-# HA: /metrics via the Service hits a RANDOM replica, and OTel counters
-# only export a series after that pod's first observation — a replica that
-# has served no cache traffic since its last restart legitimately shows
-# nothing. Scrape every server pod directly and require the series on at
-# least one (the assertion's purpose: the cache layer emits metrics).
-metrics_bodies() {
-  if $INARI_HA; then
-    local ip
-    for ip in $(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/name=inari-server \
-        -o jsonpath='{.items[*].status.podIP}'); do
-      xcurl "http://$ip:8080/metrics" 2>/dev/null || true
-    done
-  else
-    xcurl "http://$SERVER_SVC:8080/metrics"
-  fi
-}
-METRICS_BODY=$(metrics_bodies)
-grep -q "inari_cache_operations_total" <<<"$METRICS_BODY" \
-  || die "/metrics missing inari_cache_operations_total"
-grep -q "inari_fga_check_duration_seconds" <<<"$METRICS_BODY" \
-  || die "/metrics missing inari_fga_check_duration_seconds"
 
 log "registering cluster + issuing token"
 TOKEN="$(user_token)"
@@ -750,88 +632,6 @@ spec:
           key: token
 EOF
 
-log "waiting for registration, then the ESO-projected client secret"
-# Bounded poll: cluster state advances via the agent gRPC stream (app-level),
-# with no k8s condition for it.
-for i in $(seq 1 24); do
-  STATE=$(xcurl -H "Authorization: Bearer $(user_token)" "$API/tenants/$TENANT/clusters/$CLUSTER_ID" | jq -r '.cluster.state' 2>/dev/null || true)
-  [ "$STATE" = "active" ] && break
-  sleep 5
-  [ "$i" = 24 ] && die "cluster never became active (agent logs: kubectl -n inari-system logs deploy/inari-agent)"
-done
-# ESO sets Ready=True on the ExternalSecret once the Vault read+projection
-# succeeds, so this is an event-driven wait instead of a blind get+sleep poll.
-kubectl -n inari-system wait --for=condition=Ready \
-  externalsecret inari-agent-oidc-client --timeout=120s >/dev/null \
-  || die "ESO never projected inari-agent-oidc-client (kubectl -n inari-system get externalsecret inari-agent-oidc-client -o yaml)"
-kubectl -n inari-system get secret inari-agent-oidc-client >/dev/null \
-  || die "ExternalSecret Ready but inari-agent-oidc-client secret missing"
-ESO_SECRET=$(kubectl -n inari-system get secret inari-agent-oidc-client -o jsonpath='{.data.client-secret}' | base64 -d)
-KC_CLIENT_ID=$(xcurl -H "Authorization: Bearer $(user_token)" "$API/tenants/$TENANT/clusters/$CLUSTER_ID" | jq -r '.cluster.keycloakClientId')
-AT="$(admin_token)"
-KCID=$(xcurl -H "Authorization: Bearer $AT" "http://keycloak-service:8080/admin/realms/inari/clients?clientId=$KC_CLIENT_ID" | jq -r '.[0].id')
-KC_SECRET=$(xcurl -H "Authorization: Bearer $AT" "http://keycloak-service:8080/admin/realms/inari/clients/$KCID/client-secret" | jq -r .value)
-[ "$ESO_SECRET" = "$KC_SECRET" ] || die "ESO-projected secret does not match the Keycloak client secret"
-
-log "verifying capabilities stream"
-# Bounded poll: capabilities arrive over the agent stream (app-level SSE);
-# no k8s condition exists for them.
-CAPS=0
-for i in $(seq 1 36); do
-  CAPS=$(xcurl -H "Authorization: Bearer $(user_token)" \
-    "$API/tenants/$TENANT/clusters/$CLUSTER_ID/capabilities" | jq '.capabilities | length' 2>/dev/null || echo 0)
-  [ "${CAPS:-0}" -gt 0 ] && break
-  sleep 5
-done
-[ "${CAPS:-0}" -gt 0 ] || die "no capabilities streamed (agent logs: kubectl -n inari-system logs deploy/inari-agent)"
-
-log "verifying heartbeat freshness"
-SEEN1=$(xcurl -H "Authorization: Bearer $(user_token)" "$API/tenants/$TENANT/clusters/$CLUSTER_ID" | jq -r '.cluster.lastSeenAt')
-sleep 30
-SEEN2=$(xcurl -H "Authorization: Bearer $(user_token)" "$API/tenants/$TENANT/clusters/$CLUSTER_ID" | jq -r '.cluster.lastSeenAt')
-[ "$SEEN1" != "$SEEN2" ] || die "heartbeat not advancing ($SEEN1)"
-
-# --- RBAC mapping materialization (plan §7.1) -------------------------------
-# tenant.created fired the materializer: <slug>-inari-state must appear as a
-# real bare repo with baseline/rbac/* committed.
-STATE_REPO="$GIT_HOST_DIR/$TENANT-inari-state.git"
-log "waiting for the materialized tenant state repo ($STATE_REPO)"
-# Bounded poll: the repo materializes on the host filesystem via the local
-# git provider (app-level); nothing in the k8s API observes it.
-for i in $(seq 1 36); do
-  [ -d "$STATE_REPO" ] && git -C "$STATE_REPO" show main:baseline/rbac/clusterroles.yaml >/dev/null 2>&1 && break
-  sleep 5
-  [ "$i" = 36 ] && die "state repo never materialized (server logs: kubectl -n $NAMESPACE logs deploy/inari-server)"
-done
-
-# GAP(rbac-e2e-argocd): apply the repo's baseline/rbac/ from the host,
-# standing in for the tenant-local ArgoCD (not installed in this stack).
-STATE_WORK="$GIT_HOST_DIR/work"
-sync_rbac() {
-  rm -rf "$STATE_WORK"
-  git clone -q "$STATE_REPO" "$STATE_WORK"
-  kubectl apply -f "$STATE_WORK/baseline/rbac/" >/dev/null
-  # Emulate ArgoCD's prune: drop managed bindings absent from the desired
-  # set (a mapping flip renders a NEW role-qualified binding because
-  # roleRef is immutable, so the stale object must be pruned to converge).
-  for b in $(kubectl get clusterrolebinding -l "inari.io/tenant=$TENANT" -o name); do
-    name="${b#clusterrolebinding.rbac.authorization.k8s.io/}"
-    grep -qE "^  name: ${name}\$" "$STATE_WORK/baseline/rbac/clusterrolebindings.yaml" \
-      || kubectl delete clusterrolebinding "$name" >/dev/null
-  done
-}
-
-log "applying the materialized RBAC bundle and asserting the anchor roles"
-sync_rbac
-for ROLE in admin operator editor viewer; do
-  kubectl get clusterrole "tenant-$TENANT-$ROLE" >/dev/null \
-    || die "clusterrole tenant-$TENANT-$ROLE missing after sync"
-done
-kubectl get clusterrolebinding "tenant-$TENANT-viewers-viewer" >/dev/null \
-  || die "clusterrolebinding tenant-$TENANT-viewers-viewer missing"
-kubectl get clusterrolebinding "tenant-$TENANT-viewers-viewer" -o jsonpath='{.roleRef.name}' | grep -q "tenant-$TENANT-viewer" \
-  || die "viewers binding roleRef is not tenant-$TENANT-viewer"
-
 log "GAP(kc-groups-mapper): ensuring the groups claim carries full group paths"
 AT="$(admin_token)"
 MAPPERS=$(xcurl -H "Authorization: Bearer $AT" "http://keycloak-service:8080/admin/realms/inari/clients/$KC_CLIENT/protocol-mappers/models" | jq -r '.[].name')
@@ -863,343 +663,22 @@ VIEWERS_GRP=$(xcurl -H "Authorization: Bearer $AT" "http://keycloak-service:8080
 xcurl -o /dev/null -X PUT -H "Authorization: Bearer $AT" \
   "http://keycloak-service:8080/admin/realms/inari/users/$VIEWER_UID/groups/$VIEWERS_GRP" || true
 
-log "fetching the rbac-viewer token (groups claim only — the viewer is a group member, not a Keycloak Organization member, so the organization:* scope would be rejected)"
-TOKEN_RESP=$(kubectl -n "$NAMESPACE" exec "$TOOLS" -- curl -s -m 20 \
-  "http://keycloak-service:8080/realms/inari/protocol/openid-connect/token" \
-  -d grant_type=password -d client_id=inari-server \
-  -d username=rbac-viewer -d password=rbac-viewer -d scope="openid")
-VIEWER_TOKEN=$(jq -r '.access_token // empty' <<<"$TOKEN_RESP")
-[ -n "$VIEWER_TOKEN" ] || die "rbac-viewer token request failed: $TOKEN_RESP"
-PAYLOAD=$(cut -d. -f2 <<<"$VIEWER_TOKEN"); PAYLOAD="${PAYLOAD}$(printf '=%.0s' $(seq 1 $(( (4 - ${#PAYLOAD} % 4) % 4 ))))"
-CLAIMS=$(base64 -d <<<"$PAYLOAD" 2>/dev/null || base64 -D <<<"$PAYLOAD")
-jq -e --arg g "/tenant-$TENANT/viewers" '.groups and (.groups | index($g))' <<<"$CLAIMS" >/dev/null \
-  || die "viewer token lacks the groups claim entry /tenant-$TENANT/viewers: $(jq -c .groups <<<"$CLAIMS")"
-
-# RBAC authorizer check with the token's group (what the cluster would
-# decide for this group once the API server trusts the Keycloak issuer —
-# GAP(rbac-e2e-jwt-authn): wiring kind's kube-apiserver Authentication-
-# Configuration to Keycloak is a follow-up).
-kubectl auth can-i get pods --as="oidc:rbac-viewer" --as-group="/tenant-$TENANT/viewers" >/dev/null \
-  || die "viewer group cannot get pods (binding not effective)"
-if kubectl auth can-i create deployments --as="oidc:rbac-viewer" --as-group="/tenant-$TENANT/viewers" >/dev/null 2>&1; then
-  die "viewer group can create deployments (viewer role over-privileged)"
+# ---------------------------------------------------------------------------
+# Provisioning complete. All golden-path assertions live in the Go stack
+# suite (scripts/e2e/stack, `go test -tags=e2e`) — phase 1 of the shell→Go
+# migration. Export the handoff the suite consumes (contract: field renames
+# must land in suite/env.go too).
+# ---------------------------------------------------------------------------
+if [ -n "$E2E_HANDOFF_PATH" ]; then
+  jq -n \
+    --arg ns "$NAMESPACE" --arg toolbox "$TOOLS" --arg tenant "$TENANT" \
+    --arg kc_uid "$KC_UID" --arg org_kc_id "$ORG_KC_ID" \
+    --arg cluster_id "$CLUSTER_ID" --arg org_id "$ORG_ID" \
+    --arg git_host_dir "$GIT_HOST_DIR" --arg agent_chart_dir "$AGENT_CHART_DIR" \
+    '{namespace:$ns, toolbox:$toolbox, tenant:$tenant, kc_uid:$kc_uid,
+      org_kc_id:$org_kc_id, cluster_id:$cluster_id, org_id:$org_id,
+      git_host_dir:$git_host_dir, agent_chart_dir:$agent_chart_dir}' \
+    > "$E2E_HANDOFF_PATH"
+  log "handoff written to $E2E_HANDOFF_PATH"
 fi
-
-log "flipping the viewers team mapping to editor and expecting a binding update"
-xcurl -X PUT -H "Authorization: Bearer $(user_token)" -H "Content-Type: application/json" \
-  -d "{\"mappings\":[{\"team\":\"viewers\",\"roleId\":\"editor\"}]}" \
-  "$API/tenants/$TENANT/rbac/mappings" >/dev/null || die "PUT rbac/mappings failed"
-# Bounded poll: the mapping change flows outbox → rbacmaterialize → git push;
-# observable only in the state repo (app-level), not via a k8s condition.
-for i in $(seq 1 36); do
-  if git -C "$STATE_REPO" show main:baseline/rbac/clusterrolebindings.yaml 2>/dev/null \
-      | grep -qE "^  name: tenant-$TENANT-viewers-editor\$"; then
-    break
-  fi
-  sleep 5
-  [ "$i" = 36 ] && die "state repo binding never updated after the mapping change"
-done
-sync_rbac
-kubectl get clusterrolebinding "tenant-$TENANT-viewers-editor" -o jsonpath='{.roleRef.name}' | grep -q "tenant-$TENANT-editor" \
-  || die "viewers binding did not converge to tenant-$TENANT-editor"
-if kubectl get clusterrolebinding "tenant-$TENANT-viewers-viewer" >/dev/null 2>&1; then
-  die "stale viewers-viewer binding not pruned after the mapping change"
-fi
-kubectl auth can-i create deployments --as="oidc:rbac-viewer" --as-group="/tenant-$TENANT/viewers" >/dev/null \
-  || die "editor-mapped group cannot create deployments after the mapping change"
-
-# --- Policy evaluate matrix (issue #77) --------------------------------------
-# deny-latest-image (target=request, Rego) must deny :latest and untagged
-# images and allow pinned tags and digests via POST /policies/evaluate.
-log "creating the deny-latest-image policy"
-DENY_LATEST_REGO=$(cat <<'REGO'
-package inari.policy
-
-deny contains {"rule": "deny-latest-image", "reason": "image uses the :latest tag", "remediation": "pin an immutable tag or digest"} if {
-	endswith(input.spec.image, ":latest")
-}
-
-deny contains {"rule": "deny-latest-image", "reason": "image has no tag or digest", "remediation": "pin an immutable tag or digest"} if {
-	parts := split(input.spec.image, "/")
-	last := parts[count(parts) - 1]
-	not contains(last, ":")
-	not contains(last, "@")
-}
-REGO
-)
-POLICY_RESP=$(kubectl -n "$NAMESPACE" exec "$TOOLS" -- curl -s -m 20 -X POST \
-  -H "Authorization: Bearer $(user_token)" -H "Content-Type: application/json" \
-  -d "$(jq -n --arg src "$DENY_LATEST_REGO" '{name:"deny-latest-image",target:"request",engine:"rego",source:$src}')" \
-  "$API/tenants/$TENANT/policies")
-POLICY_ID=$(jq -r '.policy.id // empty' <<<"$POLICY_RESP")
-[ -n "$POLICY_ID" ] || die "policy creation failed: $POLICY_RESP"
-
-eval_image() { # image -> evaluate response JSON
-  kubectl -n "$NAMESPACE" exec "$TOOLS" -- curl -s -m 20 -X POST \
-    -H "Authorization: Bearer $(user_token)" -H "Content-Type: application/json" \
-    -d "$(jq -n --arg img "$1" --arg cid "$CLUSTER_ID" '{itemId:"demo",version:"1.0.0",clusterId:$cid,spec:{image:$img}}')" \
-    "$API/tenants/$TENANT/policies/evaluate"
-}
-
-D=$(eval_image "ghcr.io/acme/app:latest")
-jq -e '.decision.allow == false and ([.decision.violations[]?.rule] | index("deny-latest-image"))' <<<"$D" >/dev/null \
-  || die ":latest image must be denied with a deny-latest-image violation: $D"
-D=$(eval_image "ghcr.io/acme/app")
-jq -e '.decision.allow == false' <<<"$D" >/dev/null \
-  || die "untagged image must be denied: $D"
-D=$(eval_image "registry:5000/acme/app")
-jq -e '.decision.allow == false' <<<"$D" >/dev/null \
-  || die "untagged image with a registry port must be denied: $D"
-D=$(eval_image "ghcr.io/acme/app:1.4.2")
-jq -e '.decision.allow == true and (.decision.violations | length == 0)' <<<"$D" >/dev/null \
-  || die "pinned tag must be allowed: $D"
-DIGEST="ghcr.io/acme/app@sha256:$(printf 'a%.0s' $(seq 1 64))"
-D=$(eval_image "$DIGEST")
-jq -e '.decision.allow == true and (.decision.violations | length == 0)' <<<"$D" >/dev/null \
-  || die "digest-pinned image must be allowed: $D"
-
-# Negative control: a disabled policy must not gate the request.
-xcurl -X PUT -H "Authorization: Bearer $(user_token)" -H "Content-Type: application/json" \
-  -d "$(jq -n --arg src "$DENY_LATEST_REGO" '{source:$src,enabled:false}')" \
-  -o /dev/null "$API/tenants/$TENANT/policies/$POLICY_ID" || die "disabling the policy failed"
-D=$(eval_image "ghcr.io/acme/app:latest")
-jq -e '.decision.allow == true' <<<"$D" >/dev/null \
-  || die "disabled policy must not deny: $D"
-xcurl -X PUT -H "Authorization: Bearer $(user_token)" -H "Content-Type: application/json" \
-  -d "$(jq -n --arg src "$DENY_LATEST_REGO" '{source:$src,enabled:true}')" \
-  -o /dev/null "$API/tenants/$TENANT/policies/$POLICY_ID" || die "re-enabling the policy failed"
-
-# ============================================================================
-# HA-only disruption assertions (INARI_HA=true). Everything in this block
-# runs ONLY in HA mode, after the golden path above has passed unchanged.
-# ============================================================================
-if $INARI_HA; then
-  SERVER_LABEL=app.kubernetes.io/name=inari-server
-
-  # start_traffic/stop_traffic: background availability sampler. It probes
-  # /readyz through the ClusterIP Service from the toolbox pod — i.e. the
-  # exact readiness-gated routing clients depend on — and records
-  # ok=/fail= counts. Unauthenticated on purpose: Keycloak access tokens
-  # can expire mid-disruption and would measure token lifetime, not API
-  # availability. The sampler runs DETACHED inside the toolbox pod
-  # (kubectl exec drops the stream once stdin EOFs, losing the tail of a
-  # long-lived foreground sampler), writing its result to /tmp/traffic.out
-  # which stop_traffic polls for. ≈5 iterations/s (busybox sh has no
-  # SECONDS, so the window is an iteration count).
-  kubectl -n "$NAMESPACE" exec -i "$TOOLS" -- sh -c 'cat > /tmp/sampler.sh && chmod +x /tmp/sampler.sh' <<'EOF'
-#!/bin/sh
-ok=0; fail=0; i=0
-while [ "$i" -lt "$1" ]; do
-  if curl -sf -m 5 -o /dev/null "$2"; then ok=$((ok+1)); else fail=$((fail+1)); fi
-  i=$((i+1)); sleep 0.2
-done
-echo "ok=$ok fail=$fail"
-EOF
-  start_traffic() { # $1 = sample window in seconds
-    kubectl -n "$NAMESPACE" exec "$TOOLS" -- sh -c \
-      "rm -f /tmp/traffic.out; nohup /tmp/sampler.sh $(( $1 * 5 )) 'http://$SERVER_SVC:8080/readyz' > /tmp/traffic.out 2>&1 &"
-  }
-  stop_traffic() { # waits out the sampler, then prints "ok=N fail=M"
-    local out=""
-    for _ in $(seq 1 60); do
-      out=$(kubectl -n "$NAMESPACE" exec "$TOOLS" -- cat /tmp/traffic.out 2>/dev/null || true)
-      grep -q 'fail=' <<<"$out" && break
-      sleep 3
-    done
-    echo "$out"
-  }
-
-  # ---------- HA(d1): leader-leased singleton loops run exactly once ------
-  # ADR-0011: each lease-gated loop (approvals-expiry, the group syncs,
-  # fleet loops, tzf-reconcile, ...) must have exactly one holder cluster-
-  # wide, renewed (expires_at in the future), stable across samples (no
-  # flapping), and — within this quiet window — acquired exactly once
-  # since boot (no failover = the loop's effects ran on one pod only).
-  log "HA(d1): leader-leased singleton loops — exactly one holder each, renewed and stable"
-  LEASES=$(psql_inari "SELECT name || '|' || holder FROM leader_leases")
-  [ -n "$LEASES" ] || die "HA(d1): leader_leases is empty (no lease-gated loop ever acquired?)"
-  DUPES=$(cut -d'|' -f1 <<<"$LEASES" | sort | uniq -d)
-  [ -z "$DUPES" ] || die "HA(d1): leases with duplicate holders: $DUPES"
-  for sample in 1 2; do
-    [ "$(psql_inari "SELECT count(*) FROM leader_leases WHERE name='approvals-expiry' AND expires_at > now()")" = "1" ] \
-      || die "HA(d1): approvals-expiry lease missing or not renewed (sample $sample)"
-    [ "$sample" = 1 ] && sleep 8
-  done
-  ACQ=$(kubectl -n "$NAMESPACE" logs -l "$SERVER_LABEL" --tail=-1 | grep -c 'leaderlease: acquired.*approvals-expiry' || true)
-  [ "${ACQ:-0}" = "1" ] \
-    || die "HA(d1): approvals-expiry leadership was acquired $ACQ times since boot, want exactly 1 (single-execution)"
-  # Every lease, not just approvals-expiry: exactly one acquisition since
-  # boot per lease (no failover, no double-run). Log-based because the
-  # live RBAC profile cannot read the leader_leases table directly.
-  ACQ_ALL=$(kubectl -n "$NAMESPACE" logs -l "$SERVER_LABEL" --tail=-1 \
-    | grep -o 'leaderlease: acquired.*"lease":"[^"]*"' | grep -o '"lease":"[^"]*"' | sort | uniq -c)
-  [ -n "$ACQ_ALL" ] || die "HA(d1): no leaderlease acquisitions in server logs"
-  BAD_LEASES=$(awk '$1 != 1 {print $0}' <<<"$ACQ_ALL")
-  [ -z "$BAD_LEASES" ] || die "HA(d1): leases acquired != 1 time since boot (duplicate execution or flap): $BAD_LEASES"
-
-  # ---------- HA(d2): agent stream fencing evicts stale sessions ----------
-  # Fencing is per gateway instance (in-process session registry, W1), so
-  # the duplicate stream must land on the SAME server pod as the live one.
-  # Streams are per-connection load-balanced across the 2 server pods by
-  # the ClusterIP, so 3 agent pods guarantee a collision by pigeonhole (3
-  # streams, 2 pods) — deterministic, no luck involved. The new stream
-  # wins; the stale session must be evicted (logged). Then scale back and
-  # confirm the cluster returns to active.
-  log "HA(d2): agent stream fencing — duplicate stream evicts the stale session"
-  EVICTIONS_BEFORE=$(kubectl -n "$NAMESPACE" logs -l "$SERVER_LABEL" --tail=-1 | grep -c 'evicting stale session' || true)
-  kubectl -n inari-system scale deployment/inari-agent --replicas=3 >/dev/null
-  FENCED=false
-  for i in $(seq 1 24); do
-    EVICTIONS_NOW=$(kubectl -n "$NAMESPACE" logs -l "$SERVER_LABEL" --tail=-1 2>/dev/null | grep -c 'evicting stale session' || true)
-    if [ "${EVICTIONS_NOW:-0}" -gt "${EVICTIONS_BEFORE:-0}" ]; then
-      FENCED=true
-      break
-    fi
-    sleep 5
-  done
-  kubectl -n inari-system scale deployment/inari-agent --replicas=1 >/dev/null
-  kubectl -n inari-system rollout status deployment/inari-agent --timeout=180s >/dev/null
-  [ "$FENCED" = "true" ] || die "HA(d2): no stale-session eviction was logged with 3 agent pods (fencing not exercised)"
-  for i in $(seq 1 24); do
-    STATE=$(xcurl -H "Authorization: Bearer $(user_token)" "$API/tenants/$TENANT/clusters/$CLUSTER_ID" | jq -r '.cluster.state' 2>/dev/null || true)
-    [ "$STATE" = "active" ] && break
-    sleep 5
-    [ "$i" = 24 ] && die "HA(d2): cluster did not return to active after the agent scaled back to 1"
-  done
-
-  # ---------- HA(d3): agent leader failover within budget ----------------
-  # ACTIVE-PASSIVE agent HA (inari-agent W1): with 2 pods and leader
-  # election, killing the leader must promote a standby and restore the
-  # stream inside a bounded window. Live run 423ffd13 measured ~19s
-  # (kill -> new lease holder); budget 60s to absorb kind CI noise.
-  log "HA(d3): agent leader failover — standby takes over within 60s"
-  # Leader election is enabled only here: HA(d2) above needs duplicate
-  # streams, which leader election would suppress.
-  helm upgrade --install inari-agent "$AGENT_CHART_DIR" \
-    --namespace default --reuse-values \
-    --set leaderElection.enabled=true \
-    --wait --timeout 180s >/dev/null
-  kubectl -n inari-system scale deployment/inari-agent --replicas=2 >/dev/null
-  kubectl -n inari-system rollout status deployment/inari-agent --timeout=180s >/dev/null
-  LEADER=""
-  for i in $(seq 1 24); do
-    LEADER=$(kubectl -n inari-system get lease inari-agent.inari.dev \
-      -o jsonpath='{.spec.holderIdentity}' 2>/dev/null | cut -d_ -f1)
-    [ -n "$LEADER" ] && break
-    sleep 5
-    [ "$i" = 24 ] && die "HA(d3): no agent lease holder (leaderElection.enabled not effective?)"
-  done
-  log "HA(d3): leader pod: $LEADER"
-  T_KILL=$(date +%s)
-  kubectl -n inari-system delete pod "$LEADER" --wait=false >/dev/null
-  NEW_LEADER=""
-  for i in $(seq 1 24); do
-    NEW_LEADER=$(kubectl -n inari-system get lease inari-agent.inari.dev \
-      -o jsonpath='{.spec.holderIdentity}' 2>/dev/null | cut -d_ -f1)
-    [ -n "$NEW_LEADER" ] && [ "$NEW_LEADER" != "$LEADER" ] && break
-    sleep 5
-  done
-  [ -n "$NEW_LEADER" ] && [ "$NEW_LEADER" != "$LEADER" ] \
-    || die "HA(d3): lease never moved off the killed leader (holder: ${NEW_LEADER:-none})"
-  FAILOVER_S=$(( $(date +%s) - T_KILL ))
-  [ "$FAILOVER_S" -le 60 ] || die "HA(d3): leader failover took ${FAILOVER_S}s, over the 60s budget"
-  for i in $(seq 1 24); do
-    STATE=$(xcurl -H "Authorization: Bearer $(user_token)" "$API/tenants/$TENANT/clusters/$CLUSTER_ID" | jq -r '.cluster.state' 2>/dev/null || true)
-    [ "$STATE" = "active" ] && break
-    sleep 5
-    [ "$i" = 24 ] && die "HA(d3): cluster not active ${FAILOVER_S}s+ after leader failover"
-  done
-  log "HA(d3): failover ${FAILOVER_S}s (kill -> new leader), new leader: $NEW_LEADER"
-  kubectl -n inari-system scale deployment/inari-agent --replicas=1 >/dev/null
-  kubectl -n inari-system rollout status deployment/inari-agent --timeout=180s >/dev/null
-
-  # ---------- HA(a): delete one server pod mid-run ------------------------
-  # The surviving replica must keep serving (readiness-gated: zero failed
-  # probes), and the claim-based loops (outbox relay + scaffold reconcile —
-  # deliberately NOT lease-gated, ADR-0011) plus the durable JetStream
-  # consumer groups (ADR-0014) must keep processing work. Proven end-to-end:
-  # an RBAC mapping flip must still materialize into the tenant state repo,
-  # and a fresh scaffold run must still reach completed.
-  log "HA(a): deleting one server pod mid-run — API stays available, outbox + scaffold reconcile continue"
-  VICTIM=$(kubectl -n "$NAMESPACE" get pods -l "$SERVER_LABEL" -o jsonpath='{.items[0].metadata.name}')
-  log "HA(a): victim pod: $VICTIM"
-  start_traffic 90
-  kubectl -n "$NAMESPACE" delete pod "$VICTIM" --wait=false
-  kubectl -n "$NAMESPACE" rollout status deployment/inari-server --timeout=240s
-  TRAFFIC=$(stop_traffic)
-  FAILS=$(sed -n 's/.*fail=\([0-9]*\).*/\1/p' <<<"$TRAFFIC")
-  [ "${FAILS:-99}" = "0" ] || die "HA(a): $FAILS failed requests while a pod was being replaced ($TRAFFIC)"
-  xcurl -X PUT -H "Authorization: Bearer $(user_token)" -H "Content-Type: application/json" \
-    -d "{\"mappings\":[{\"team\":\"viewers\",\"roleId\":\"admin\"}]}" \
-    "$API/tenants/$TENANT/rbac/mappings" >/dev/null || die "HA(a): PUT rbac/mappings failed after the pod loss"
-  for i in $(seq 1 36); do
-    if git -C "$STATE_REPO" show main:baseline/rbac/clusterrolebindings.yaml 2>/dev/null \
-        | grep -qE "^  name: tenant-$TENANT-viewers-admin\$"; then
-      break
-    fi
-    sleep 5
-    [ "$i" = 36 ] && die "HA(a): outbox relay/consumers did not process rbac.mappings.updated after the pod loss"
-  done
-  # Durable-consumer failover evidence: the shared outbox-rbac-materialize
-  # group kept acking after the pod loss (ack floor advanced past the
-  # pre-kill deliveries).
-  CONSUMER=$(kubectl -n "$NAMESPACE" exec deploy/nats-box -- \
-    nats consumer info INARI_OUTBOX outbox-rbac-materialize --server nats:4222 --json 2>/dev/null || true)
-  jq -e '.ack_floor.stream_seq > 0 and .num_pending == 0' <<<"$CONSUMER" >/dev/null 2>&1 \
-    || die "HA(a): outbox-rbac-materialize consumer did not drain after failover (consumer info: ${CONSUMER:-empty})"
-  log "HA(a): outbox relay + durable consumers continued on the surviving pod; driving a scaffold run"
-  # The go-service skeleton templates .Values.goVersion/.Values.port too;
-  # the renderer does not inject schema defaults, so pass all four.
-  RUN_RESP=$(xcurl -X POST -H "Authorization: Bearer $(user_token)" -H "Content-Type: application/json" \
-    -d '{"values":{"serviceName":"ha-probe","module":"github.com/e2e/ha-probe","goVersion":"1.23","port":8080}}' \
-    "$API/tenants/$TENANT/templates/go-service/runs")
-  RUN_ID=$(jq -r '.run.id // empty' <<<"$RUN_RESP")
-  [ -n "$RUN_ID" ] || die "HA(a): scaffold run creation failed: $RUN_RESP"
-  for i in $(seq 1 48); do
-    RUN_VIEW=$(xcurl -H "Authorization: Bearer $(user_token)" "$API/tenants/$TENANT/scaffold-runs/$RUN_ID" 2>/dev/null || true)
-    PHASE=$(jq -r '.run.phase // empty' <<<"$RUN_VIEW")
-    [ "$PHASE" = "completed" ] && break
-    [ "$PHASE" = "failed" ] && die "HA(a): scaffold run failed post-disruption: $RUN_VIEW"
-    sleep 5
-    [ "$i" = 48 ] && die "HA(a): scaffold run stuck in phase '${PHASE:-unknown}' (reconcile loop not progressing on the survivor)"
-  done
-
-  # ---------- HA(b): rollout restart under traffic ------------------------
-  # A full rolling restart must honor rollingUpdate.maxUnavailable: 0
-  # (available replicas never drop below 2) and keep failed requests
-  # within a small error budget (in-flight connections may reset during
-  # pod termination).
-  log "HA(b): rollout restart under traffic — maxUnavailable: 0, bounded error budget"
-  AVAIL_LOG=$(mktemp /tmp/inari-e2e-avail.XXXXXX)
-  echo 99 > "$AVAIL_LOG"
-  start_traffic 150
-  (
-    for _ in $(seq 1 150); do
-      AV=$(kubectl -n "$NAMESPACE" get deployment inari-server -o jsonpath='{.status.availableReplicas}' 2>/dev/null || true)
-      # A transient kubectl/apiserver error yields an empty AV — skip the
-      # sample rather than recording a bogus 0 as the minimum.
-      case "$AV" in ''|*[!0-9]*) sleep 1; continue;; esac
-      MIN=$(cat "$AVAIL_LOG")
-      if [ "$AV" -lt "$MIN" ]; then echo "$AV" > "$AVAIL_LOG"; fi
-      sleep 1
-    done
-  ) &
-  WATCH_PID=$!
-  kubectl -n "$NAMESPACE" rollout restart deployment/inari-server
-  kubectl -n "$NAMESPACE" rollout status deployment/inari-server --timeout=300s
-  wait "$WATCH_PID" 2>/dev/null || true
-  TRAFFIC=$(stop_traffic)
-  MIN_AVAIL=$(cat "$AVAIL_LOG")
-  FAILS=$(sed -n 's/.*fail=\([0-9]*\).*/\1/p' <<<"$TRAFFIC")
-  [ "$MIN_AVAIL" -ge 2 ] \
-    || die "HA(b): availableReplicas dropped to $MIN_AVAIL during the rollout (maxUnavailable: 0 violated)"
-  ERROR_BUDGET=2
-  [ "${FAILS:-99}" -le "$ERROR_BUDGET" ] \
-    || die "HA(b): $FAILS failed requests during the rollout restart, over the error budget of $ERROR_BUDGET ($TRAFFIC)"
-
-  log "HA: all disruption assertions passed (c: migration-lock race, d1: lease single-execution, d2: stream fencing, a: pod kill, b: rollout restart)"
-fi
-
-HA_NOTE=""
-$INARI_HA && HA_NOTE=" + HA disruption assertions (pod kill, rollout restart, migration-lock race, lease single-execution, stream fencing)"
-log "PASS: golden path verified (tenant → register → stream → $CAPS capabilities → heartbeats → RBAC materialization → policy evaluate matrix)$HA_NOTE"
+log "PASS: golden-path stack provisioned — assertions: E2E_HANDOFF_PATH=$E2E_HANDOFF_PATH go test -tags=e2e ./scripts/e2e/stack/..."
