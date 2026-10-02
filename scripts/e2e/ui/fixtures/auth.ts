@@ -3,9 +3,10 @@
 // Each persona logs in once per run through the REAL Keycloak 26 two-step UI
 // flow (username → submit → password) and saves its storageState to
 // .auth/<persona>.json; test projects reuse the file via `storageState` in
-// playwright.config.ts. Only the dev-admin persona is wired to a project for
-// now — later waves add operator/editor/viewer/member by appending an entry
-// to PERSONAS and a matching setup spec + project.
+// playwright.config.ts. Personas are provisioned by seed/seed-personas.mjs
+// (see the persona table + no-mutation rules in scripts/e2e/ui/README.md);
+// the chromium project still runs as dev-admin — waves owning persona-scoped
+// specs add matching projects.
 
 import type { Page } from "@playwright/test";
 
@@ -25,7 +26,14 @@ export const PERSONAS: Record<string, Persona> = {
     username: process.env.E2E_USER || "dev-admin",
     password: process.env.E2E_PASSWORD || "dev-admin",
   },
-  // Later waves: operator, editor, viewer, member.
+  // Provisioned by seed/seed-personas.mjs (one per ADR-0013 built-in role,
+  // plus the role-less propagation target). Specs must never mutate the role
+  // assignments of operator/editor/viewer; member is owned by the
+  // role-lifecycle spec and must be restored to role-less.
+  operator: { name: "e2e-operator", username: "e2e-operator", password: "e2e-operator" },
+  editor: { name: "e2e-editor", username: "e2e-editor", password: "e2e-editor" },
+  viewer: { name: "e2e-viewer", username: "e2e-viewer", password: "e2e-viewer" },
+  member: { name: "e2e-member", username: "e2e-member", password: "e2e-member" },
 };
 
 export function authFile(persona: Persona): string {

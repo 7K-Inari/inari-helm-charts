@@ -1,11 +1,14 @@
-// Setup project: authenticate each wired persona via the real Keycloak login
-// and save .auth/<persona>.json. Only dev-admin for now; later waves add one
-// setup test (and matching project) per additional persona.
+// Setup project: authenticate every persona via the real Keycloak login and
+// save .auth/<persona>.json. Personas are seeded by seed/seed-personas.mjs;
+// the chromium project consumes dev-admin — persona-scoped test projects are
+// added by the waves that own those specs.
 
 import { test as setup } from "@playwright/test";
 
 import { loginAsPersona, PERSONAS } from "./auth";
 
-setup("authenticate dev-admin", async ({ page }) => {
-  await loginAsPersona(page, PERSONAS.devAdmin);
-});
+for (const persona of Object.values(PERSONAS)) {
+  setup(`authenticate ${persona.name}`, async ({ page }) => {
+    await loginAsPersona(page, persona);
+  });
+}

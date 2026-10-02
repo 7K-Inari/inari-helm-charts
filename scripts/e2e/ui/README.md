@@ -11,9 +11,13 @@ scripts/e2e/ui/
 ├── playwright.config.ts        # local defaults (list reporter, no retries)
 ├── playwright.config.ci.ts     # CI: retries 2, workers 1, screenshot/video/trace on failure, JUnit + HTML
 ├── fixtures/
-│   ├── auth.ts                 # persona registry + KC two-step login helper
-│   ├── auth.setup.ts           # setup project: saves .auth/<persona>.json (dev-admin only for now)
+│   ├── auth.ts                 # persona registry (5 personas) + KC two-step login helper
+│   ├── auth.setup.ts           # setup project: saves .auth/<persona>.json for every persona
 │   └── org.ts                  # unique org-name factory: e2e-<runId>-<seq>
+├── seed/
+│   ├── seed-personas.mjs       # IDEMPOTENT persona seed (KC users + org join + role memberships
+│   │                           #   via the inari-server API + inari-ui redirect whitelist)
+│   └── seed-personas.test.mjs  # unit tests for the seed's decision logic (node --test)
 ├── helpers/
 │   ├── env.ts                  # env contract (UI_BASE, KC_HOST, KC_URL, TENANT_NAME, ...)
 │   ├── poll.ts                 # poll(fn, { timeout, interval }) — see the polling RULE below
@@ -35,6 +39,7 @@ Requires a running golden-path stack (`KEEP_CLUSTER=true bash scripts/e2e/golden
 kubectl -n inari port-forward svc/inari-console 18080:80 &
 kubectl -n inari port-forward svc/inari-server 18090:8080 &
 kubectl -n inari port-forward svc/keycloak-service 18091:8080 &
+node scripts/e2e/ui/seed/seed-personas.mjs   # idempotent; safe to re-run
 node scripts/e2e/lib/ui-proxy.mjs &          # merges console + API onto :8080
 helm upgrade inari-console charts/inari-console --namespace inari \
   --reuse-values --set keycloakUrl=http://127.0.0.1:18091   # see constraints below
@@ -52,6 +57,26 @@ Env knobs (same names/defaults as the old script): `UI_BASE`
 `E2E_PASSWORD` (`dev-admin`), `TENANT_NAME` (`E2E Org`), `API_BASE`
 (default `$UI_BASE`).
 
+## Personas
+
+Seeded by `seed/seed-personas.mjs` (run as a workflow step between stack
+bring-up and the Playwright run; idempotent — safe to re-run against a kept
+cluster). One per ADR-0013 built-in role, plus the role-less member:
+
+| User | Password | Role | Purpose | Mutation policy |
+|---|---|---|---|---|
+| `dev-admin` | `dev-admin` | `admin` (platform-admins, E2E Org creator) | default `chromium` project identity; seeded by `golden-path.sh` | never touched by specs |
+| `e2e-operator` | `e2e-operator` | `operator` (Platform Engineer) | operator-scope RBAC coverage | **specs must never change the assignment** |
+| `e2e-editor` | `e2e-editor` | `editor` (Developer) | developer-scope RBAC coverage | **specs must never change the assignment** |
+| `e2e-viewer` | `e2e-viewer` | `viewer` | read-only RBAC surface | **specs must never change the assignment** |
+| `e2e-member` | `e2e-member` | *(none)* | org member with no role/team — propagation target for the role-lifecycle spec | owned by the role-lifecycle spec, which **must restore it to role-less** (afterEach/afterAll) |
+
+Role assignment goes through the real inari-server membership API
+(`PUT /api/v1/tenants/{org}/members/{subject}` with a built-in `roleId`) —
+never KC groups, never direct DB — so seeding doubles as a membership-path
+signal. The seed fails fast if that API misbehaves (P0-class, not a seed
+bug).
+
 ## Rules for spec authors
 
 1. **Poll after every mutation.** No spec ever asserts immediately after a
@@ -64,6 +89,12 @@ Env knobs (same names/defaults as the old script): `UI_BASE`
 3. **Tags.** Priority tags `@p0`/`@p1`/`@p2`, suite tags like `@smoke`, and
    `@quarantine` for known-flaky specs (CI greps `@p0` and inverts
    `@quarantine`).
+4. **Personas are fixed, spec objects are unique.** Never mutate the role
+   personas' assignments or `dev-admin` (see the table above); only
+   `e2e-member`'s role may change, and only inside the role-lifecycle spec.
+   Spec-created objects (orgs/teams/roles) go through the `fixtures/org.ts`
+   unique-name factory — never create fixed-name objects that could collide
+   with the seed.
 
 ## Key constraints (learned the hard way — do not "fix")
 
@@ -77,8 +108,8 @@ Env knobs (same names/defaults as the old script): `UI_BASE`
   one host). In kind, `../lib/ui-proxy.mjs` merges console + API onto
   `:8080` to reproduce that topology for the browser; `UI_BASE` must point at
   the proxy, not the console forward.
-- **inari-ui client redirect whitelist.** The workflow adds
-  `http://127.0.0.1:8080/*` to the realm-imported `inari-ui` Keycloak
-  client's redirect URIs / web origins before the run. That step stays in
-  the workflow until the W3 seed script absorbs it — do not move it into the
-  suite.
+- **inari-ui client redirect whitelist.** The realm re-import wipes the
+  `inari-ui` client's redirect URIs / web origins every run, so
+  `seed/seed-personas.mjs` re-adds `http://127.0.0.1:8080/*` before the
+  Playwright run. The seed owns this — do not re-add it to the workflow or
+  the suite.
