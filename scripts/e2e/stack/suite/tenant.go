@@ -37,7 +37,11 @@ func Tenant(t *testing.T, e *Env) {
 	// platform group sync reconciler → outbox → tuple writer. Poll, never
 	// assert immediately (no k8s condition exists for it).
 	poll.Eventually(t, 90*time.Second, 5*time.Second, func() (bool, error) {
-		return e.FGA.Check(storeID, "user:"+e.KCUID, "org_creator", "platform:inari")
+		ok, err := e.FGA.Check(storeID, "user:"+e.KCUID, "org_creator", "platform:inari")
+		if err != nil {
+			return false, nil // transient (OpenFGA/toolbox warm-up): keep polling, like the script's `|| echo false`
+		}
+		return ok, nil
 	}, "org_creator tuple for dev-admin on platform:inari")
 
 	perms, err := e.API.MePermissions()
@@ -49,7 +53,11 @@ func Tenant(t *testing.T, e *Env) {
 	// group; the outbox dispatcher seeds team membership and team→org role
 	// tuples asynchronously.
 	poll.Eventually(t, 90*time.Second, 5*time.Second, func() (bool, error) {
-		return e.FGA.Check(storeID, "user:"+e.KCUID, "tenant_admin", "organization:"+e.OrgKCID)
+		ok, err := e.FGA.Check(storeID, "user:"+e.KCUID, "tenant_admin", "organization:"+e.OrgKCID)
+		if err != nil {
+			return false, nil // transient: keep polling (script retried curl failures too)
+		}
+		return ok, nil
 	}, "creator tenant_admin tuple on organization:"+e.OrgKCID)
 
 	// Tenant creation emitted several events; the relay marks rows published
@@ -58,7 +66,7 @@ func Tenant(t *testing.T, e *Env) {
 	poll.Eventually(t, 120*time.Second, 5*time.Second, func() (bool, error) {
 		n, err := kube.PSQLInari(e.Namespace, "SELECT count(*) FROM outbox WHERE published_at IS NULL")
 		if err != nil {
-			return false, err
+			return false, nil // transient (primary failover / exec hiccup): keep polling, like the script's retry loop
 		}
 		return n == "0", nil
 	}, "outbox drained through the NATS relay")

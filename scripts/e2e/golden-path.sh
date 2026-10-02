@@ -123,7 +123,12 @@ GIT_HOST_DIR="$(mktemp -d /tmp/inari-e2e-git.XXXXXX)"
 chmod 0777 "$GIT_HOST_DIR"
 
 cleanup() {
-  kubectl -n "$NAMESPACE" delete pod "$TOOLS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  # The toolbox pod is the Go suite's ONLY transport (every HTTP call is a
+  # kubectl exec curl through it), so it must survive script exit when a
+  # handoff was requested. It dies with the kind cluster teardown either way.
+  if [ -z "$E2E_HANDOFF_PATH" ]; then
+    kubectl -n "$NAMESPACE" delete pod "$TOOLS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  fi
   $KEEP_CLUSTER || kind delete cluster --name "$CLUSTER_NAME" >/dev/null 2>&1 || true
   # The git host dir must survive script exit when a Go-suite handoff was
   # requested: the stack suite reads the materialized state repos from it.
@@ -681,4 +686,4 @@ if [ -n "$E2E_HANDOFF_PATH" ]; then
     > "$E2E_HANDOFF_PATH"
   log "handoff written to $E2E_HANDOFF_PATH"
 fi
-log "PASS: golden-path stack provisioned — assertions: E2E_HANDOFF_PATH=$E2E_HANDOFF_PATH go test -tags=e2e ./scripts/e2e/stack/..."
+log "PASS: golden-path stack provisioned — assertions: (cd scripts/e2e/stack && E2E_HANDOFF_PATH=$E2E_HANDOFF_PATH go test -tags=e2e ./...)"

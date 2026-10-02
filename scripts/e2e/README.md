@@ -33,7 +33,7 @@ scripts/e2e/
 |---|---|---|---|---|
 | Golden path provisioning (fast) | `golden-path.sh` (`INARI_HA=false`) | bash script on kind | `release-e2e.yaml` job `golden-path` (matrix `ha: false`) on Release PRs | Yes — Release-PR gate |
 | Golden path provisioning (HA) | `golden-path.sh` (`INARI_HA=true`) | bash script on kind | `release-e2e.yaml` job `golden-path` (matrix `ha: true`) on Release PRs | Yes — Release-PR gate |
-| Golden path assertions (Go) | `stack/` (`suite/`, E2E_HA=1 unlocks disruption subtests) | `go test -tags=e2e ./scripts/e2e/stack/...` on the provisioned kind stack | `release-e2e.yaml` step "Run golden-path Go assertions (stack suite)" on BOTH HA matrix legs (right after provisioning) | Yes — Release-PR gate |
+| Golden path assertions (Go) | `stack/` (`suite/`, E2E_HA=1 unlocks disruption subtests) | `go test -tags=e2e ./...` from `scripts/e2e/stack/` (nested module — won't resolve from the repo root) on the provisioned kind stack | `release-e2e.yaml` step "Run golden-path Go assertions (stack suite)" on BOTH HA matrix legs (right after provisioning) | Yes — Release-PR gate |
 | API schema conformance | `api/api_schema_e2e_test.go` | `go test -tags=e2e` inside the inari-server checkout at the pinned tag | `release-e2e.yaml` step "Run api-schema e2e against the live stack" (after the stack suite) | Yes — Release-PR gate |
 | Console UI e2e | `ui/` (Playwright Test) + `lib/ui-proxy.mjs` + `ui/seed/seed-personas.mjs` | `npx playwright test --config playwright.config.ci.ts --grep @p0 --grep-invert @quarantine` in `ui/` | `release-e2e.yaml` step "Run console UI e2e (Playwright)" on BOTH HA matrix legs (after api-schema) | Yes — Release-PR gate |
 | Console UI e2e (full, incl. quarantine) | `ui/` (Playwright Test) | `npx playwright test --config playwright.config.ci.ts --grep "@p0\|@p1\|@p2"` (includes `@quarantine`, `continue-on-error`) | `.github/workflows/e2e-nightly.yaml` (cron 03:17 UTC + `workflow_dispatch`) | No — nightly only, non-blocking |
@@ -84,7 +84,7 @@ handoff file; the Go stack suite asserts against the deployed stack:
 KEEP_CLUSTER=true E2E_HANDOFF_PATH=/tmp/inari-e2e-handoff.json \
   bash scripts/e2e/golden-path.sh                     # provision (add INARI_HA=true for the HA stack)
 E2E_HANDOFF_PATH=/tmp/inari-e2e-handoff.json \
-  go test -tags=e2e -count=1 ./scripts/e2e/stack/...  # assert (add E2E_HA=1 for disruption subtests)
+  go test -tags=e2e -count=1 ./...                  # assert — run from scripts/e2e/stack (add E2E_HA=1 for disruption)
 ```
 
 `KEEP_CLUSTER=true` (or any `E2E_HANDOFF_PATH`) keeps the kind cluster and

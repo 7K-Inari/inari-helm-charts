@@ -332,13 +332,16 @@ jobs:
         # E2E_HA=1 on the HA leg unlocks the disruption subtests;
         # SERVER_MIGRATIONS_DIR points at the inari-server checkout (HA(c)
         # migration count).
-        working-directory: bundle
+        # The stack suite is a nested Go module: go test must run from INSIDE
+        # it (a ./scripts/e2e/stack/... pattern from the repo root fails with
+        # "directory prefix ... does not contain main module").
+        working-directory: bundle/scripts/e2e/stack
         env:
           E2E_HA: ${{ matrix.ha && '1' || '0' }}
           E2E_HANDOFF_PATH: /tmp/inari-e2e-handoff.json
           SERVER_MIGRATIONS_DIR: ${{ github.workspace }}/inari-server/internal/db/migrations
         run: >-
-          go test -tags=e2e -count=1 -json ./scripts/e2e/stack/...
+          go test -tags=e2e -count=1 -json ./...
           2>&1 | tee /tmp/golden-path-go.json
 
       - name: Run api-schema e2e against the live stack

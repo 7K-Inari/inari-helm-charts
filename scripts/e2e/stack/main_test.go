@@ -8,7 +8,10 @@
 // Phase 1 of the shell→Go migration (parent design §3): the script owns
 // provisioning; this suite owns assertions. Run:
 //
-//	E2E_HANDOFF_PATH=/tmp/inari-e2e-handoff.json go test -tags=e2e ./scripts/e2e/stack/...
+//	E2E_HANDOFF_PATH=/tmp/inari-e2e-handoff.json go test -tags=e2e ./...
+//
+// (from this directory — the module is nested, so a ./scripts/e2e/stack/...
+// pattern from the repo root does not resolve).
 package stack_test
 
 import (
