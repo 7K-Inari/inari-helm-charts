@@ -325,15 +325,24 @@ jobs:
           E2E_OPENAPI="${{ github.workspace }}/inari-server/dist/openapi.yaml" \
           go test -tags=e2e ./e2e/ -run TestAPISchemaConformance -count=1 -v
 
-      - name: Run console UI smoke (Playwright)
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bundle/scripts/e2e/ui/package-lock.json') }}
+
+      - name: Run console UI e2e (Playwright)
         # Browser-level e2e (run d701e2ba advice): real Keycloak login + the
-        # Access console's RBAC tabs. Two adaptations vs production:
+        # Access console's RBAC tabs via the Playwright Test suite in
+        # scripts/e2e/ui. Two adaptations vs production:
         #   1. The console's keycloakUrl must be browser-reachable, so it is
         #      re-set to the port-forward (tokens keep the converged
         #      service-DNS issuer, which the server accepts).
         #   2. There is no gateway in kind and the server sends no CORS
         #      headers, so lib/ui-proxy.mjs merges console + API onto one origin
         #      (the production topology) for the browser.
+        # The inari-ui client redirect-whitelist below stays here until the
+        # W3 seed script absorbs it (see scripts/e2e/ui/README.md).
         working-directory: bundle
         run: |
           set -euo pipefail
@@ -367,15 +376,19 @@ jobs:
           node scripts/e2e/lib/ui-proxy.mjs &
           PROXY_PID=$!
           trap 'kill $PROXY_PID 2>/dev/null || true' EXIT
-          npx -y playwright@1.55.0 install --with-deps chromium
-          node scripts/e2e/ui-smoke.mjs
+          cd scripts/e2e/ui
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test --config playwright.config.ci.ts --grep @p0 --grep-invert @quarantine
 
-      - name: Upload UI smoke screenshots on failure
+      - name: Upload UI e2e artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ui-smoke-screenshots-ha-${{ matrix.ha }}
-          path: /tmp/ui-smoke/
+          name: ui-e2e-ha-${{ matrix.ha }}
+          path: |
+            bundle/scripts/e2e/ui/test-results/
+            bundle/scripts/e2e/ui/playwright-report/
           if-no-files-found: ignore
           retention-days: 7
 

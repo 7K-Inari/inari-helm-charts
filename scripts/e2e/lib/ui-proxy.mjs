@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Single-origin shim for the kind UI e2e (scripts/e2e/ui-smoke.mjs).
+// Single-origin shim for the kind UI e2e (scripts/e2e/ui Playwright suite).
 //
 // In production the Gateway routes /api/v1 and / on the console's host, so
 // the SPA talks to the API same-origin. In kind there is no gateway: the

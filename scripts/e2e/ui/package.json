@@ -1,0 +1,17 @@
+{
+  "name": "inari-e2e-ui",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Playwright Test suite for the Inari console UI e2e (scripts/e2e/ui).",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:ci": "playwright test --config playwright.config.ci.ts",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0"
+  }
+}
