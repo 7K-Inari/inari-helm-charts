@@ -30,7 +30,7 @@ scripts/e2e/
 | Golden path (fast) | `golden-path.sh` (`INARI_HA=false`) | bash script on kind | `release-e2e.yaml` job `golden-path` (matrix `ha: false`) on Release PRs | Yes — Release-PR gate |
 | Golden path (HA) | `golden-path.sh` (`INARI_HA=true`) | bash script on kind | `release-e2e.yaml` job `golden-path` (matrix `ha: true`) on Release PRs | Yes — Release-PR gate |
 | API schema conformance | `api/api_schema_e2e_test.go` | `go test -tags=e2e` inside the inari-server checkout at the pinned tag | `release-e2e.yaml` step "Run api-schema e2e against the live stack" (after golden-path) | Yes — Release-PR gate |
-| Console UI e2e | `ui/` (Playwright Test) + `lib/ui-proxy.mjs` | `npx playwright test --config playwright.config.ci.ts --grep @p0 --grep-invert @quarantine` in `ui/` | `release-e2e.yaml` step "Run console UI e2e (Playwright)" on BOTH HA matrix legs (after api-schema) | Yes — Release-PR gate |
+| Console UI e2e | `ui/` (Playwright Test) + `lib/ui-proxy.mjs` + `ui/seed/seed-personas.mjs` | `npx playwright test --config playwright.config.ci.ts --grep @p0 --grep-invert @quarantine` in `ui/` | `release-e2e.yaml` step "Run console UI e2e (Playwright)" on BOTH HA matrix legs (after api-schema) | Yes — Release-PR gate |
 | kubectl access | `kubectl/kubectl-access.sh` | bash script (docker etcd + kube-apiserver; no kind) | not wired into CI yet | No — manual scenario |
 
 ## Running locally
@@ -73,11 +73,13 @@ go test -tags=e2e ./e2e/ -run TestAPISchemaConformance -count=1 -v
 ### Console UI e2e
 
 Requires a running golden-path stack. Mirror the workflow step: port-forward
-console/server/Keycloak (18080/18090/18091), allow the browser origin on the
-`inari-ui` Keycloak client, point the console chart's `keycloakUrl` at the
-forward, start `lib/ui-proxy.mjs`, then run the Playwright suite:
+console/server/Keycloak (18080/18090/18091), run the persona seed (idempotent
+— also whitelists the browser origin on the `inari-ui` Keycloak client),
+point the console chart's `keycloakUrl` at the forward, start
+`lib/ui-proxy.mjs`, then run the Playwright suite:
 
 ```sh
+node scripts/e2e/ui/seed/seed-personas.mjs   # personas + inari-ui whitelist
 node scripts/e2e/lib/ui-proxy.mjs &   # merges console + API onto :8080
 cd scripts/e2e/ui
 npm ci
