@@ -15,6 +15,11 @@ export class TeamsRolesTabPage {
     return this.page.getByText(TeamsRolesTabPage.MARKER).first();
   }
 
+  /** First per-team role select in the matrix (any team). */
+  anyRoleSelect(): Locator {
+    return this.page.getByLabel(/^Role for /).first();
+  }
+
   /** Per-team role select (aria-label "Role for <team display name>"). */
   roleSelect(teamDisplay: string): Locator {
     return this.page.getByLabel(`Role for ${teamDisplay}`);

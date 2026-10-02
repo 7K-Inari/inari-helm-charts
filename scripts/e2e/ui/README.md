@@ -32,6 +32,9 @@ scripts/e2e/ui/
 ├── pages/
 │   ├── login.page.ts           # KC 26 two-step form (username → submit → password)
 │   ├── app-shell.page.ts       # boot gate, tenant cards, sidebar nav, "Loading…" waits
+│   ├── settings.page.ts        # Settings layout: admin-filtered nav, read-only notice
+│   ├── catalog.page.ts         # Catalog browse marker
+│   ├── deploys.page.ts         # Deploys (resource inventory) marker
 │   └── access/                 # Access section + Members / Teams & Roles / Roles / Identity tabs
 └── specs/
     ├── smoke/
@@ -40,8 +43,12 @@ scripts/e2e/ui/
         ├── role-lifecycle.spec.ts # @p0 @rbac — custom role CRUD, team→role mapping,
         │                          #   propagation to e2e-member's /me/permissions,
         │                          #   delete-in-use 409, cleanup
-        └── builtin-protection.spec.ts # @p0 @rbac — built-in role rename/delete 409s (UI + API)
-                                       #   and the tenant.admin last-admin guardrail (P0-3/P0-4)
+        ├── builtin-protection.spec.ts # @p0 @rbac — built-in role rename/delete 409s (UI + API)
+        │                              #   and the tenant.admin last-admin guardrail (P0-3/P0-4)
+        └── role-gating-matrix.spec.ts # @p1 @rbac — per-persona gating matrix (P1-1): each
+                                       #   role persona's control set vs its migration-0029
+                                       #   bundle, negative direct-URL nav, bundle regression
+                                       #   guard (API)
 ```
 
 The role-lifecycle spec's propagation step polls `GET /me/permissions` with

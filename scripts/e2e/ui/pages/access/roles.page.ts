@@ -49,6 +49,17 @@ export class RolesTabPage {
     return this.page.getByRole("button", { name: "New role" });
   }
 
+  /**
+   * CapabilityGate disable-mode wrapper (span[aria-disabled="true"])
+   * around a control. Users without manage-rbac see write controls inert
+   * (pointer-events-none), not hidden and not natively disabled.
+   */
+  inertControl(name: string | RegExp): Locator {
+    return this.page.locator('span[aria-disabled="true"]', {
+      has: this.page.getByRole("button", { name }),
+    });
+  }
+
   /** Open the create-role editor. */
   async newRole(): Promise<void> {
     await this.newRoleButton().click();
