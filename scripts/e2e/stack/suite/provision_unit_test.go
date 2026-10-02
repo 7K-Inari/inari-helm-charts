@@ -4,7 +4,10 @@
 // under the e2e tag (the suite package is e2e-only) but need no cluster.
 package suite
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSplitImage(t *testing.T) {
 	for _, tc := range []struct {
@@ -29,6 +32,28 @@ func TestSplitImage(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestKindConfigYAML(t *testing.T) {
+	t.Run("with node image", func(t *testing.T) {
+		cfg := kindConfigYAML("/tmp/git", "kindest/node:v1.32.0@sha256:abc")
+		for _, want := range []string{
+			"kind: Cluster",
+			"image: kindest/node:v1.32.0@sha256:abc",
+			"hostPath: /tmp/git",
+			"containerPath: /git",
+		} {
+			if !strings.Contains(cfg, want) {
+				t.Fatalf("kindConfigYAML missing %q:\n%s", want, cfg)
+			}
+		}
+	})
+	t.Run("without node image", func(t *testing.T) {
+		cfg := kindConfigYAML("/tmp/git", "")
+		if strings.Contains(cfg, "image:") {
+			t.Fatalf("empty node image must not render an image line:\n%s", cfg)
+		}
+	})
 }
 
 func TestAudContains(t *testing.T) {
