@@ -14,33 +14,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Builds the shared prerequisites (kind cluster + private operator image)
-  # concurrently with lint-test so bootstrap never waits on lint.
+  # Pulls all public stack images (ArgoCD + operators + platform + NATS +
+  # OpenFGA) into a tar cache and resolves the private inari-operator image.
+  # Runs concurrently with lint-test so install-test never waits on pulls.
   prep:
     runs-on: ubuntu-latest
+    outputs:
+      operator-tag: ${{ steps.operator.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create kind cluster
-        uses: helm/kind-action@v1.12.0
+      - name: Cache CI image tars
+        id: imgcache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/ci-images/node.tar
+            /tmp/ci-images/workloads.tar
+          key: ci-images-${{ runner.os }}-${{ hashFiles('scripts/ci/images.txt') }}
+
+      - name: Pull + save CI images (cache miss)
+        if: steps.imgcache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ci-images
+          grep -vE '^\s*(#|$)' scripts/ci/images.txt | xargs -P8 -n1 docker pull
+          # kind node image must be in the docker daemon before kind create cluster
+          grep '^kindest/node:' scripts/ci/images.txt | xargs docker save -o /tmp/ci-images/node.tar
+          # everything else is side-loaded into the kind cluster
+          grep -vE '^\s*(#|$)|^kindest/node:' scripts/ci/images.txt | xargs docker save -o /tmp/ci-images/workloads.tar
 
       # The operator image package is private; anonymous pulls in kind fail.
-      # Pre-pull with GITHUB_TOKEN and side-load it (pullPolicy IfNotPresent).
-      - name: Preload private operator image into kind
+      # Pre-pull with GITHUB_TOKEN so install-test can side-load it.
+      - name: Preload private operator image
+        id: operator
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: scripts/preload-operator-image.sh chart-testing
-
-      # The image can't cross job runners directly; export it as an artifact
-      # for install-test to load into its own kind cluster.
-      # NB: save by repository reference — `docker save <image-id>` strips
-      # repo:tag metadata, and the loaded image would be untagged.
-      - name: Export preloaded operator image
         run: |
-          docker images ghcr.io/7k-inari/inari-operator -q | grep -q .
-          docker save ghcr.io/7k-inari/inari-operator -o "$RUNNER_TEMP/operator-image.tar"
+          set -euo pipefail
+          TAG=$(scripts/preload-operator-image.sh --docker-only | tail -1)
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          docker save "ghcr.io/7k-inari/inari-operator:${TAG}" -o "$RUNNER_TEMP/operator-image.tar"
 
+      # Artifacts cross runners more reliably than the cache alone.
       - name: Upload operator image artifact
         uses: actions/upload-artifact@v4
         with:
@@ -108,23 +125,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore CI image cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            /tmp/ci-images/node.tar
+            /tmp/ci-images/workloads.tar
+          key: ci-images-${{ runner.os }}-${{ hashFiles('scripts/ci/images.txt') }}
+          fail-on-cache-miss: true
+
+      - name: Load kind node image
+        run: docker load -i /tmp/ci-images/node.tar
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          config: scripts/ci/kind-config.yaml
+
+      - name: Side-load workload images into kind
+        run: kind load image-archive /tmp/ci-images/workloads.tar --name chart-testing
+
       - name: Download operator image artifact
         uses: actions/download-artifact@v4
         with:
           name: operator-image
           path: ${{ runner.temp }}
 
-      - name: Create kind cluster
-        uses: helm/kind-action@v1.12.0
-
       - name: Load preloaded operator image into kind
         run: |
+          set -euo pipefail
           docker load -i "$RUNNER_TEMP/operator-image.tar"
-          # Pick the appVersion tag (not ':latest', which only exists as a
-          # workaround in preload-operator-image.sh); the chart references it.
-          IMAGE_TAG=$(docker images ghcr.io/7k-inari/inari-operator --format '{{.Tag}}' | grep -v '^latest$' | head -1)
-          test -n "$IMAGE_TAG"
-          kind load docker-image "ghcr.io/7k-inari/inari-operator:${IMAGE_TAG}" --name chart-testing
+          kind load docker-image "ghcr.io/7k-inari/inari-operator:${{ needs.prep.outputs.operator-tag }}" --name chart-testing
 
       - name: Install GNU jq
         run: sudo apt-get update -y && sudo apt-get install -y jq
@@ -177,13 +208,25 @@ jobs:
       - name: Backup
         run: scripts/backup.sh "$RUNNER_TEMP/backups"
 
+      - name: Create DR kind cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: inari-dr
+          config: scripts/ci/kind-config.yaml
+
+      - name: Side-load images into DR cluster
+        run: |
+          set -euo pipefail
+          kind load image-archive /tmp/ci-images/workloads.tar --name inari-dr
+          kind load docker-image "ghcr.io/7k-inari/inari-operator:${{ needs.prep.outputs.operator-tag }}" --name inari-dr
+
       - name: DR drill (restore + verify on a fresh kind cluster)
         env:
           GITOPS_TARGET_REVISION: ${{ github.head_ref || github.ref_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if ! scripts/dr-drill.sh "$RUNNER_TEMP"/backups/inari-backup-*.tgz; then
+          if ! scripts/dr-drill.sh --skip-kind "$RUNNER_TEMP"/backups/inari-backup-*.tgz; then
             kubectl -n inari get pods -o wide || true
             for p in $(kubectl -n inari get pods -o jsonpath='{.items[*].metadata.name}'); do
               echo "=== logs $p ==="; kubectl -n inari logs "$p" --all-containers --tail=50 || true
