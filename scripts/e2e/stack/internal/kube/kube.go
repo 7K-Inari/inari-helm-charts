@@ -23,6 +23,19 @@ func Run(name string, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
+// RunStdin executes a CLI with stdin piped in; stderr is attached to the error.
+func RunStdin(name, stdin string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	cmd.Stdin = strings.NewReader(stdin)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%s %s: %w\n%s", name, strings.Join(args, " "), err, stderr.String())
+	}
+	return stdout.String(), nil
+}
+
 // Kubectl runs kubectl with the given args.
 func Kubectl(args ...string) (string, error) { return Run("kubectl", args...) }
 
@@ -67,12 +80,40 @@ func RolloutStatus(ns, resource, timeout string) error {
 	return err
 }
 
-// WaitCondition wraps kubectl wait --for=<condition> <resources...>.
+// WaitCondition wraps kubectl wait --for=<condition> <resources...>. An
+// empty ns targets cluster-scoped resources (no -n flag).
 func WaitCondition(ns, condition, timeout string, resources ...string) error {
-	args := []string{"-n", ns, "wait", "--for=" + condition}
+	var args []string
+	if ns != "" {
+		args = append(args, "-n", ns)
+	}
+	args = append(args, "wait", "--for="+condition)
 	args = append(args, resources...)
 	args = append(args, "--timeout="+timeout)
 	_, err := Kubectl(args...)
+	return err
+}
+
+// ApplyStdin pipes a manifest into kubectl apply -f -.
+func ApplyStdin(manifest string) (string, error) {
+	c := exec.Command("kubectl", "apply", "-f", "-")
+	c.Stdin = strings.NewReader(manifest)
+	var stdout, stderr bytes.Buffer
+	c.Stdout = &stdout
+	c.Stderr = &stderr
+	if err := c.Run(); err != nil {
+		return "", fmt.Errorf("kubectl apply -f -: %w\n%s", err, stderr.String())
+	}
+	return stdout.String(), nil
+}
+
+// EnsureNamespace creates the namespace if absent (idempotent).
+func EnsureNamespace(ns string) error {
+	out, err := Kubectl("create", "namespace", ns, "--dry-run=client", "-o", "yaml")
+	if err != nil {
+		return err
+	}
+	_, err = ApplyStdin(out)
 	return err
 }
 

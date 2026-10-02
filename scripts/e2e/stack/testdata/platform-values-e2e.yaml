@@ -1,0 +1,13 @@
+# inari-platform e2e trims (both HA legs) — consumed by the Go provisioner
+# (suite/provision.go). Production chart defaults stay untouched; everything
+# here only shrinks the kind footprint. Previously inline --set flags in
+# golden-path.sh.
+postgresql:
+  storageSize: 1Gi # CI footprint; chart default 10Gi
+keycloak:
+  hostname:
+    hostname: http://keycloak.local:8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi

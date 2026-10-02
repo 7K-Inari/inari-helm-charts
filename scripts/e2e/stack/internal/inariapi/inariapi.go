@@ -73,6 +73,41 @@ func (c *Client) PutJSON(path string, in any) error {
 
 // --- typed helpers (golden-path surface only) ---
 
+// CreateTenant creates the tenant and returns the organization's Keycloak
+// org id (provisioning — phase 3 port from golden-path.sh).
+func (c *Client) CreateTenant(slug, displayName string) (string, error) {
+	var resp struct {
+		Organization struct {
+			KeycloakOrgID string `json:"keycloakOrgId"`
+		} `json:"organization"`
+	}
+	err := c.PostJSON("/tenants", map[string]string{
+		"slug": slug, "displayName": displayName,
+	}, &resp)
+	return resp.Organization.KeycloakOrgID, err
+}
+
+// RegisterCluster registers a cluster under the tenant and returns the
+// cluster id and orgId (agent tenant id).
+func (c *Client) RegisterCluster(name string, labels map[string]string) (clusterID, orgID string, err error) {
+	var resp struct {
+		Cluster Cluster `json:"cluster"`
+	}
+	err = c.PostJSON("/tenants/"+c.Tenant+"/clusters", map[string]any{
+		"name": name, "labels": labels,
+	}, &resp)
+	return resp.Cluster.ID, resp.Cluster.OrgID, err
+}
+
+// IssueClusterToken mints a registration token for the cluster.
+func (c *Client) IssueClusterToken(clusterID string) (string, error) {
+	var resp struct {
+		Token string `json:"token"`
+	}
+	err := c.PostJSON("/tenants/"+c.Tenant+"/clusters/"+clusterID+"/tokens", nil, &resp)
+	return resp.Token, err
+}
+
 // MePermissions returns the caller's platform permissions.
 func (c *Client) MePermissions() (struct {
 	CanCreateOrganizations bool `json:"canCreateOrganizations"`

@@ -1,0 +1,6 @@
+# inari-server NON-HA e2e leg values — consumed by the Go provisioner.
+# Pairs with testdata/nats-values-e2e.yaml (single-node JetStream): streams
+# are ensured at R=1 because a single NATS node cannot place R=3 streams.
+# The HA leg uses server-values-e2e-ha.yaml + nats-values.yaml instead.
+nats:
+  streamReplicas: 1

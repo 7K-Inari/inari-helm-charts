@@ -10,8 +10,6 @@ architecture plan §1, "Unified testing folder structure"):
 
 ```
 scripts/e2e/
-├── golden-path.sh            # full-stack kind gate, PROVISION-ONLY (shell→Go migration phase 1:
-│                             #   it brings the stack up and writes a handoff file; stack/ asserts)
 ├── ui/                       # console UI e2e (Playwright Test suite; see ui/README.md)
 ├── api/
 │   └── api_schema_e2e_test.go    # API ↔ OpenAPI schema conformance (Go, tag e2e)
@@ -19,21 +17,26 @@ scripts/e2e/
 │   └── kubectl-access.sh         # control-plane-only kubectl access scenario
 ├── lib/
 │   └── ui-proxy.mjs              # single-origin shim shared by the UI suites
-└── stack/                      # golden-path assertion suite (self-contained Go module, tag e2e)
-    ├── main_test.go              # TestGoldenPath entry: ordered subtests per phase
-    ├── suite/                    # tenant / cluster / RBAC / policy / disruption (E2E_HA=1) phases
-    ├── internal/                 # thin wrappers: poll, kube, kind, kc, inariapi, fga (CLI exec only)
-    └── testdata/
-        └── nats-values.yaml      # HA NATS JetStream values consumed by golden-path.sh
+└── stack/                      # golden-path suite — provisions AND asserts (self-contained Go
+    │                           #   module, tag e2e; shell→Go migration complete, golden-path.sh
+    │                           #   deleted in phase 3)
+    ├── main_test.go              # TestGoldenPath: in-process bring-up + ordered assertion phases
+    ├── provision_test.go         # TestProvisionStack/TestProvisionAgent (tag e2eprovision —
+    │                           #   targeted chart-install reruns, excluded from the plain e2e run)
+    ├── suite/                    # provide.go (kind/hostPath/operators) + provision.go (helm layers)
+    │                           #   + seed.go (KC seeding, tenant/cluster/agent) + tenant / cluster /
+    │                           #   RBAC / policy / disruption (E2E_HA=1) assertion phases
+    ├── internal/                 # thin wrappers: poll, kube, kind, kc, inariapi, fga, helm (CLI exec only)
+    └── testdata/                 # e2e values: nats-values.yaml (HA 3-node), nats-values-e2e.yaml
+                                #   (non-HA single node), platform/server-values-e2e[-ha].yaml trims
 ```
 
 ## Suite map
 
 | Suite | Path | Runner | CI trigger | Gating |
 |---|---|---|---|---|
-| Golden path provisioning (fast) | `golden-path.sh` (`INARI_HA=false`) | bash script on kind | `release-e2e.yaml` job `golden-path` (matrix `ha: false`) on Release PRs | Yes — Release-PR gate |
-| Golden path provisioning (HA) | `golden-path.sh` (`INARI_HA=true`) | bash script on kind | `release-e2e.yaml` job `golden-path` (matrix `ha: true`) on Release PRs | Yes — Release-PR gate |
-| Golden path assertions (Go) | `stack/` (`suite/`, E2E_HA=1 unlocks disruption subtests) | `go test -tags=e2e ./...` from `scripts/e2e/stack/` (nested module — won't resolve from the repo root) on the provisioned kind stack | `release-e2e.yaml` step "Run golden-path Go assertions (stack suite)" on BOTH HA matrix legs (right after provisioning) | Yes — Release-PR gate |
+| Golden path (fast leg) | `stack/` (Go suite, `E2E_HA=0`) | `go test -tags=e2e -count=1 -timeout 40m ./...` from `scripts/e2e/stack/` (nested module — won't resolve from the repo root): provisions the whole kind stack in-process, then asserts | `release-e2e.yaml` job `golden-path` (matrix `ha: false`) on Release PRs | Yes — Release-PR gate |
+| Golden path (HA leg) | `stack/` (Go suite, `E2E_HA=1` flips helm replica values + unlocks disruption subtests) | same, with `E2E_HA=1` + `SERVER_MIGRATIONS_DIR` | `release-e2e.yaml` job `golden-path` (matrix `ha: true`) on Release PRs | Yes — Release-PR gate |
 | API schema conformance | `api/api_schema_e2e_test.go` | `go test -tags=e2e` inside the inari-server checkout at the pinned tag | `release-e2e.yaml` step "Run api-schema e2e against the live stack" (after the stack suite) | Yes — Release-PR gate |
 | Console UI e2e | `ui/` (Playwright Test) + `lib/ui-proxy.mjs` + `ui/seed/seed-personas.mjs` | `npx playwright test --config playwright.config.ci.ts --grep @p0 --grep-invert @quarantine` in `ui/` | `release-e2e.yaml` step "Run console UI e2e (Playwright)" on BOTH HA matrix legs (after api-schema) | Yes — Release-PR gate |
 | Console UI e2e (full, incl. quarantine) | `ui/` (Playwright Test) | `npx playwright test --config playwright.config.ci.ts --grep "@p0\|@p1\|@p2"` (includes `@quarantine`, `continue-on-error`) | `.github/workflows/e2e-nightly.yaml` (cron 03:17 UTC + `workflow_dispatch`) | No — nightly only, non-blocking |
@@ -77,22 +80,29 @@ first (`inari/server:e2e` from inari-server, `inari/agent:e2e` from
 inari-agent). For the HA assertions also set `SERVER_MIGRATIONS_DIR` to the
 inari-server checkout's `internal/db/migrations`.
 
-Two steps (shell→Go migration phase 1): the script provisions and writes a
-handoff file; the Go stack suite asserts against the deployed stack:
+One command (shell→Go migration phase 3 — `golden-path.sh` is deleted):
+the Go stack suite provisions the whole stack in-process (kind cluster +
+git hostPath → operators → helm charts in dependency layers → KC seeding →
+tenant/cluster/agent) and then asserts:
 
 ```sh
+cd scripts/e2e/stack
 KEEP_CLUSTER=true E2E_HANDOFF_PATH=/tmp/inari-e2e-handoff.json \
-  bash scripts/e2e/golden-path.sh                     # provision (add INARI_HA=true for the HA stack)
-E2E_HANDOFF_PATH=/tmp/inari-e2e-handoff.json \
-  go test -tags=e2e -count=1 ./...                  # assert — run from scripts/e2e/stack (add E2E_HA=1 for disruption)
+  go test -tags=e2e -count=1 -timeout 40m ./...    # add E2E_HA=1 + SERVER_MIGRATIONS_DIR for the HA leg
 ```
 
-`KEEP_CLUSTER=true` (or any `E2E_HANDOFF_PATH`) keeps the kind cluster and
-the git host dir alive for the Go suite. Without `E2E_HANDOFF_PATH` the
-script provisions and tears down exactly as before, with no assertions.
+`KEEP_CLUSTER=true` keeps the kind cluster and the git host dir alive after
+the run (for the api-schema/UI suites or inspection); without it the suite
+tears both down at test end. Pointing `E2E_HANDOFF_PATH` at an EXISTING
+handoff file skips provisioning entirely and asserts against that
+already-running stack (fast local reruns). `-timeout` must exceed go
+test's 10m default — bring-up + assertions take longer.
 
-See the script header for the full env knob list (`HELM_CHARTS_DIR`,
-`SERVER_CHART_DIR`, `CONSOLE_CHART_DIR`, `INARI_E2E_CACHE_BACKEND`, ...).
+Env knobs (defaults in `stack/suite/provision.go`): `CLUSTER_NAME`,
+`NAMESPACE`, `TENANT`, `SERVER_IMAGE` / `AGENT_IMAGE`, `HELM_CHARTS_DIR`
+plus the per-chart `*_CHART_DIR` overrides, `VAULT_DEV_TOKEN`,
+`INARI_E2E_CACHE_BACKEND` (memory|redis; redis default on the HA leg),
+`E2E_PROVISION_ONLY=1` (bring-up without assertions — the nightly uses it).
 
 ### API schema conformance
 

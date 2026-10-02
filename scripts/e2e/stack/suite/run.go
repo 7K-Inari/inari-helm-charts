@@ -2,7 +2,10 @@
 
 package suite
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 // Run is the TestGoldenPath body: ordered subtests, each naming one
 // assertion phase so CI output identifies the exact failing phase. The
@@ -10,6 +13,12 @@ import "testing"
 // state — so a failed phase aborts the rest via require-style t.Fatal.
 func Run(t *testing.T) {
 	e := Load(t)
+	if os.Getenv("E2E_PROVISION_ONLY") == "1" {
+		t.Log("E2E_PROVISION_ONLY=1: stack provisioned; skipping assertions " +
+			"(nightly bring-up parity with the old script)")
+		return
+	}
+	e.requireHAMigrations(t)
 	t.Run("tenant", func(t *testing.T) { Tenant(t, e) })
 	t.Run("cluster", func(t *testing.T) { Cluster(t, e) })
 	t.Run("rbac_materialization", func(t *testing.T) { RBACMaterialization(t, e) })

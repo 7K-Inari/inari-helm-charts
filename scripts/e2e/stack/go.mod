@@ -2,7 +2,10 @@ module 7k-inari/inari-release-bundle/scripts/e2e/stack
 
 go 1.23
 
-require github.com/stretchr/testify v1.10.0
+require (
+	github.com/stretchr/testify v1.10.0
+	golang.org/x/sync v0.10.0
+)
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect

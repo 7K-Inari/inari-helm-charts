@@ -6,7 +6,7 @@ name: e2e-nightly
 #
 # What it does:
 #   1. Brings up the same kind stack as the release-e2e golden path
-#      (INARI_HA=false leg), pinned to the inari-server tag resolved from
+#      (non-HA leg), pinned to the inari-server tag resolved from
 #      charts/inari-server appVersion on main.
 #   2. Runs the FULL Playwright suite (@p0|@p1|@p2 INCLUDING @quarantine) —
 #      quarantined tests only ever run here.
@@ -36,7 +36,7 @@ jobs:
     timeout-minutes: 60
     steps:
       # BEGIN bring-up (extract to reusable workflow in W7) — mirrors the
-      # release-e2e.yaml golden-path job (INARI_HA=false leg). Keep this
+      # release-e2e.yaml golden-path job (non-HA leg). Keep this
       # block contiguous so the W7 reusable-workflow sibling can lift it out
       # verbatim.
       - name: Checkout bundle (charts under test)
@@ -98,19 +98,30 @@ jobs:
       - name: Build agent image
         run: docker build -f inari-agent/Dockerfile -t inari/agent:e2e ./inari-agent
 
-      - name: Create kind cluster
+      - name: Install kind
+        # The Go provisioner creates the cluster itself (custom extraMounts
+        # config for the git hostPath) — only the binary is needed here.
         uses: helm/kind-action@v1.12.0
         with:
           cluster_name: inari-e2e-nightly
-          wait: 60s
+          install_only: true
 
-      - name: Run golden path
-        working-directory: bundle
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: bundle/scripts/e2e/stack/go.mod
+
+      - name: Run golden path (Go stack suite, provision-only)
+        # Phase 3 of the shell→Go migration: golden-path.sh is gone; the
+        # stack suite provisions in-process. E2E_PROVISION_ONLY=1 keeps the
+        # nightly's old script semantics (bring-up only, no assertions).
+        working-directory: bundle/scripts/e2e/stack
         run: >-
+          CLUSTER_NAME=inari-e2e-nightly
           AGENT_CHART_DIR=${{ github.workspace }}/inari-agent/charts/inari-agent
           OPERATOR_CHART_DIR=${{ github.workspace }}/inari-operator/charts/inari-operator
-          KEEP_CLUSTER=true INARI_HA=false
-          bash scripts/e2e/golden-path.sh
+          KEEP_CLUSTER=true E2E_PROVISION_ONLY=1
+          go test -tags=e2e -count=1 -timeout 40m ./...
       # END bring-up (extract to reusable workflow in W7)
 
       - name: Cache Playwright browsers

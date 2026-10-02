@@ -1,0 +1,8 @@
+# inari-server HA e2e leg values (E2E_HA=1) — consumed by the Go
+# provisioner. Pairs with testdata/nats-values.yaml (3-node JetStream
+# cluster): streams stay R=3 so any single node loss keeps the stream live
+# (99.9% availability posture; the disruption subtests assert against it).
+# replicaCount=2 + cache.backend=redis arrive as --set flags flipped by
+# E2E_HA / INARI_E2E_CACHE_BACKEND in suite/provision.go.
+nats:
+  streamReplicas: 3
