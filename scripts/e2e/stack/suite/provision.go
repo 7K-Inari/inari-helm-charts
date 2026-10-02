@@ -148,9 +148,14 @@ func (c *ProvisionConfig) kcFQDN() string {
 	return "keycloak-service." + c.Namespace + ".svc:8080"
 }
 
+// splitImage splits repo:tag, tolerating a registry port (colon before the
+// last slash is not a tag) and defaulting a tag-less image to "latest"
+// (docker semantics — a bare LastIndex(":") would mis-split or panic).
 func splitImage(image string) (repo, tag string) {
-	i := strings.LastIndex(image, ":")
-	return image[:i], image[i+1:]
+	if i := strings.LastIndex(image, ":"); i > strings.LastIndex(image, "/") {
+		return image[:i], image[i+1:]
+	}
+	return image, "latest"
 }
 
 func logf(format string, args ...any) { fmt.Printf("[e2e] "+format+"\n", args...) }

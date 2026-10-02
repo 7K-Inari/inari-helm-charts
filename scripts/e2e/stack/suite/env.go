@@ -1,8 +1,9 @@
 //go:build e2e
 
-// Package suite holds the golden-path assertion phases. The stack is
-// provisioned by scripts/e2e/golden-path.sh (phase 1 of the shell→Go
-// migration); this package only asserts against the deployed stack.
+// Package suite holds the golden-path provisioning + assertion phases
+// (shell→Go migration phase 3: golden-path.sh is deleted — provide.go,
+// provision.go and seed.go bring the stack up in-process; the phases
+// assert against it).
 package suite
 
 import (
@@ -22,7 +23,7 @@ import (
 // lands upstream.
 const (
 	// GapKCPlatformGroup: dev-admin is joined to the platform-admins
-	// Keycloak group imperatively (by golden-path.sh) because org_creator
+	// Keycloak group imperatively (by the suite's seed.go) because org_creator
 	// tuple sync is driven by platform group membership; the upstream fix
 	// automates this seeding in the realm/platform chart.
 	GapKCPlatformGroup = "kc-platform-group"
@@ -36,8 +37,9 @@ const (
 	GapRBACE2EArgoCD = "rbac-e2e-argocd"
 )
 
-// Handoff is the contract written by golden-path.sh after provisioning; the
-// Go suite consumes it read-only. Field renames must land in both places.
+// Handoff is the contract the provisioner (provide.go) writes after
+// bring-up; a later suite run attaching via E2E_HANDOFF_PATH consumes it
+// read-only. Field renames must land in both writer and reader.
 type Handoff struct {
 	Namespace     string `json:"namespace"`
 	Toolbox       string `json:"toolbox"`
