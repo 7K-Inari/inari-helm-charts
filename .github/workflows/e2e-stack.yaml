@@ -155,9 +155,12 @@ jobs:
       - name: Set up Go
         # The stack suite is what runs here — pin the toolchain to ITS
         # module (the nested module under scripts/e2e/stack).
+        # cache-dependency-path: the module is nested, so setup-go's
+        # default go.sum discovery would miss it and cache nothing.
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: bundle/scripts/e2e/stack/go.mod
+          cache-dependency-path: bundle/scripts/e2e/stack/go.sum
 
       - name: Install cosign
         if: inputs.build-from-ref == 'none' && inputs.cosign-verify
@@ -182,16 +185,30 @@ jobs:
           docker pull "$IMAGE_REF"
           docker tag "$IMAGE_REF" inari/server:e2e
 
+      - name: Set up Docker Buildx
+        # The agent image is ALWAYS built in-job (there is no published
+        # agent tag to pull) — the GHA layer cache turns every rebuild
+        # after the first into a cache replay. The server repair-path
+        # build below uses the same cache backend (own scope).
+        uses: docker/setup-buildx-action@v3
+
       - name: Build server image from ref
         # Repair path for unreleased combos.
         if: inputs.build-from-ref != 'none'
         working-directory: inari-server
         run: |
           git checkout "${{ inputs.build-from-ref }}"
-          docker build -f deploy/docker/Dockerfile -t inari/server:e2e .
+          docker buildx build --load \
+            --cache-from type=gha,scope=inari-server \
+            --cache-to type=gha,mode=max,scope=inari-server \
+            -f deploy/docker/Dockerfile -t inari/server:e2e .
 
       - name: Build agent image
-        run: docker build -f inari-agent/Dockerfile -t inari/agent:e2e ./inari-agent
+        run: >-
+          docker buildx build --load
+          --cache-from type=gha,scope=inari-agent
+          --cache-to type=gha,mode=max,scope=inari-agent
+          -f inari-agent/Dockerfile -t inari/agent:e2e ./inari-agent
 
       - name: Install kind
         # The Go provisioner creates the cluster itself (it needs a custom
@@ -202,6 +219,93 @@ jobs:
         with:
           cluster_name: inari-e2e
           install_only: true
+
+      # --- CI caching (see scripts/e2e/README.md "CI caching") -----------
+      # The whole stack's images are pinned in
+      # bundle/scripts/e2e/stack/testdata/images.txt; that file's hash IS
+      # the cache key, so any pin bump misses the cache. No restore-keys:
+      # a near-miss would load the wrong images silently. Mechanism choice:
+      # a single docker-save tar + `kind load image-archive` was chosen
+      # over a runner-local registry + containerd mirror — fewer moving
+      # parts, no mirror plumbing in the suite's kind config, identical on
+      # the HA leg (kind load targets every node of the cluster).
+      - name: Cache e2e image tar
+        id: imgcache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/e2e-images/images.tar
+          key: e2e-images-${{ runner.os }}-${{ hashFiles('bundle/scripts/e2e/stack/testdata/images.txt') }}
+
+      - name: Pull + save images (cache miss)
+        if: steps.imgcache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          t0=$(date +%s)
+          mkdir -p /tmp/e2e-images
+          MANIFEST=bundle/scripts/e2e/stack/testdata/images.txt
+          grep -vE '^\s*(#|$)' "$MANIFEST" | xargs -P8 -n1 docker pull
+          grep -vE '^\s*(#|$)' "$MANIFEST" | xargs docker save -o /tmp/e2e-images/images.tar
+          echo "[timing] image pull+save (miss): $(( $(date +%s) - t0 ))s"
+
+      - name: Pre-create cluster + preload images
+        # The Go suite adopts this cluster (E2E_ADOPT_CLUSTER=1) and reuses
+        # the fixed git host dir (GIT_HOST_DIR) — it must NOT recreate it,
+        # or the preloaded images would be lost. docker load is only needed
+        # for the kindest/node image (kind create resolves it from the
+        # local daemon); `kind load image-archive` reads the tar directly.
+        run: |
+          set -euo pipefail
+          MANIFEST=bundle/scripts/e2e/stack/testdata/images.txt
+          # Strip the digest for kind create: `docker load` does NOT restore
+          # RepoDigests, so `docker inspect repo:tag@digest` fails on the
+          # loaded image and kind's inspect-then-pull would re-fetch the
+          # manifest from Docker Hub on every cache hit. The plain tag
+          # inspects fine after load; its content was already pinned by the
+          # digest-pinned pull on the miss path. The manifest keeps the
+          # digest — it is the cache-key input and the pull pin.
+          NODE_IMAGE=$(grep '^kindest/node' "$MANIFEST" | cut -d@ -f1)
+          t0=$(date +%s)
+          docker load -i /tmp/e2e-images/images.tar
+          echo "[timing] docker load: $(( $(date +%s) - t0 ))s"
+
+          mkdir -p /tmp/inari-e2e-git && chmod 777 /tmp/inari-e2e-git
+          {
+            echo "kind: Cluster"
+            echo "apiVersion: kind.x-k8s.io/v1alpha4"
+            echo "nodes:"
+            echo "  - role: control-plane"
+            echo "    image: $NODE_IMAGE"
+            echo "    extraMounts:"
+            echo "      - hostPath: /tmp/inari-e2e-git"
+            echo "        containerPath: /git"
+          } > /tmp/kind-config.yaml
+          t0=$(date +%s)
+          kind create cluster --name inari-e2e --config /tmp/kind-config.yaml --wait 60s
+          echo "[timing] kind create: $(( $(date +%s) - t0 ))s"
+
+          t0=$(date +%s)
+          kind load image-archive /tmp/e2e-images/images.tar --name inari-e2e
+          echo "[timing] kind load image-archive: $(( $(date +%s) - t0 ))s"
+
+      - name: Cache helm repo index + charts
+        # Repo adds/index downloads (~30-60s across 6 repos). BOTH dirs are
+        # needed: ~/.config/helm holds repositories.yaml, ~/.cache/helm the
+        # index files. On a hit the suite + install-operators.sh run with
+        # HELM_REPOS_SEEDED=1 and SKIP repo add/update — without that skip
+        # the cache is dead weight, because add/update always re-fetch every
+        # index over the network. Keyed on the image manifest because it
+        # records the chart pins; a chart bump changes the manifest -> fresh
+        # index. Soft restore-key: a stale index missing a newly pinned
+        # version fails loudly (version not found) — the correct signal to
+        # regenerate images.txt.
+        id: helmcache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/helm
+            ~/.config/helm
+          key: helm-${{ runner.os }}-${{ hashFiles('bundle/scripts/e2e/stack/testdata/images.txt') }}
+          restore-keys: helm-${{ runner.os }}-
 
       - name: Provision + assert golden path (Go stack suite)
         # The stack suite provisions the whole stack in-process (kind
@@ -218,15 +322,24 @@ jobs:
         env:
           E2E_HA: ${{ inputs.ha && '1' || '0' }}
           KEEP_CLUSTER: ${{ inputs.keep-cluster }}
+          # Adopt the pre-created, image-preloaded cluster (see the preload
+          # step above) instead of recreating an empty one.
+          E2E_ADOPT_CLUSTER: '1'
+          GIT_HOST_DIR: /tmp/inari-e2e-git
+          # Helm cache hit => repo config + index were restored; the suite
+          # and install-operators.sh skip repo add/update (they would
+          # re-fetch every index and defeat the cache).
+          HELM_REPOS_SEEDED: ${{ steps.helmcache.outputs.cache-hit == 'true' && '1' || '0' }}
           E2E_HANDOFF_PATH: /tmp/inari-e2e-handoff.json
           SERVER_MIGRATIONS_DIR: ${{ github.workspace }}/inari-server/internal/db/migrations
           QUAR_ARGS: ${{ inputs.mode == 'nightly' && '-args -include-quarantined' || '' }}
-        run: >-
+        run: |
+          set -euo pipefail
           AGENT_CHART_DIR=${{ github.workspace }}/inari-agent/charts/inari-agent
           OPERATOR_CHART_DIR=${{ github.workspace }}/inari-operator/charts/inari-operator
-          go test -tags=e2e -count=1 -timeout ${{ inputs.ha && '50m' || '40m' }} -json ./...
-          $QUAR_ARGS
-          2>&1 | tee /tmp/golden-path-go.json
+          go test -tags=e2e -count=1 -timeout ${{ inputs.ha && '50m' || '40m' }} -json ./... \
+            $QUAR_ARGS \
+            2>&1 | tee /tmp/golden-path-go.json
 
       - name: Run api-schema e2e against the live stack
         # Gate-only: the driver imports inari-server modules and reads
@@ -245,11 +358,22 @@ jobs:
           E2E_OPENAPI="${{ github.workspace }}/inari-server/dist/openapi.yaml" \
           go test -tags=e2e ./e2e/ -run TestAPISchemaConformance -count=1 -v
 
+      - name: Resolve Playwright cache key
+        # $ImageVersion is set on GH-hosted runners (not visible to
+        # workflow expressions, so it is resolved in a step): runner image
+        # bumps change the browser's system deps, so they must invalidate
+        # the cache cleanly instead of restoring broken browsers.
+        id: pwkey
+        run: >-
+          echo "key=playwright-${{ runner.os }}-${ImageVersion:-unknown}-${{
+          hashFiles('bundle/scripts/e2e/ui/package-lock.json') }}" >> "$GITHUB_OUTPUT"
+
       - name: Cache Playwright browsers
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('bundle/scripts/e2e/ui/package-lock.json') }}
+          key: ${{ steps.pwkey.outputs.key }}
+          restore-keys: playwright-${{ runner.os }}-
 
       - name: Run console UI e2e (Playwright)
         # Gate: @p0 WITHOUT @quarantine (gating; a quarantined test never
@@ -334,8 +458,13 @@ jobs:
           kubectl -n inari get pods -o wide > /tmp/e2e-diag/pods.txt 2>&1
           kubectl -n inari get events --sort-by=.lastTimestamp > /tmp/e2e-diag/events.txt 2>&1
           kubectl -n inari describe pods > /tmp/e2e-diag/describe-pods.txt 2>&1
-          kubectl -n inari logs -l app.kubernetes.io/name=inari-server --prefix --tail=500 \
+          kubectl -n inari logs -l app.kubernetes.io/name=inari-server --prefix --tail=2000 \
             > /tmp/e2e-diag/inari-server.log 2>&1
+          kubectl -n inari logs statefulset/nats --all-containers --tail=500 > /tmp/e2e-diag/nats.log 2>&1
+          kubectl -n inari exec deploy/nats-box -- nats stream ls --server nats:4222 \
+            > /tmp/e2e-diag/nats-streams.txt 2>&1
+          kubectl -n inari exec deploy/nats-box -- nats stream info INARI_OUTBOX --server nats:4222 \
+            > /tmp/e2e-diag/nats-outbox-info.txt 2>&1
           kubectl -n inari-system logs deployment/inari-agent --tail=500 > /tmp/e2e-diag/inari-agent.log 2>&1
           kubectl -n inari logs deployment/inari-console --tail=100 > /tmp/e2e-diag/inari-console.log 2>&1
           kubectl -n inari logs deployment/inari-operator --tail=100 > /tmp/e2e-diag/inari-operator.log 2>&1

@@ -13,7 +13,7 @@ cluster and applies these manifests.
 | -2 | `keycloak-operator` | kustomize `gitops/operators/keycloak-operator` (upstream 26.3.2 + cluster-wide patch) |
 | -1 | `inari-operator-crds` | OCI `ghcr.io/7k-inari/charts/inari-operator-crds` |
 | 0 | `platform-config` | `charts/inari-platform` in this repo (chart name `inari-platform`: CNPG Cluster, `inari-db` secrets, Keycloak CR, realm import + PostSync jobs) |
-| 1 | `nats`, `openfga` | upstream helm charts (values lifted from the old umbrella) |
+| 1 | `nats`, `openfga` | upstream helm charts |
 | 2 | `inari-operator` | OCI `ghcr.io/7k-inari/charts/inari-operator` |
 | 3 | `inari-server`, `inari-console` | OCI `ghcr.io/7k-inari/charts/...` (charts live in and release from this repo) |
 

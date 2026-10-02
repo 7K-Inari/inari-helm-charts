@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Restore an Inari platform backup produced by scripts/backup.sh.
 #
-# Assumes the umbrella chart is already installed and healthy on the target
-# cluster (e.g. a fresh kind cluster via bootstrap.sh / dr-drill.sh).
+# Assumes the gitops-composed stack is already installed and healthy on the
+# target cluster (e.g. a fresh kind cluster via bootstrap.sh / dr-drill.sh).
 # Logical dumps carry --clean/--if-exists, so the target may be fresh or used.
 #
 # Usage: scripts/restore.sh <backup.tgz>

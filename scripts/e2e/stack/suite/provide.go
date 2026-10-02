@@ -18,6 +18,30 @@ import (
 	"7k-inari/inari-release-bundle/scripts/e2e/stack/internal/kube"
 )
 
+// defaultKindNodeImage pins the kind node image so CI can preload and cache
+// it (scripts/e2e/stack/testdata/images.txt — bump there AND here). Matches
+// the kind v0.26.0 default (helm/kind-action@v1.12.0 installs kind v0.26.0).
+// Override with KIND_NODE_IMAGE; empty disables the pin (kind default).
+const defaultKindNodeImage = "kindest/node:v1.32.0@sha256:c48c62eac5da28cdadcf560d1d8616cfa6783b58f0d94cf63ad1bf49600cb027"
+
+// kindConfigYAML renders the kind cluster config: a single control-plane
+// node with the host git root mounted at /git, optionally pinned to a node
+// image (empty nodeImage = kind's built-in default).
+func kindConfigYAML(gitHostDir, nodeImage string) string {
+	imageLine := ""
+	if nodeImage != "" {
+		imageLine = "    image: " + nodeImage + "\n"
+	}
+	return fmt.Sprintf(`kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+%s    extraMounts:
+      - hostPath: %s
+        containerPath: /git
+`, imageLine, gitHostDir)
+}
+
 // Provision brings the whole golden-path stack up from nothing and returns
 // the suite Env. Cleanup parity with the script: KEEP_CLUSTER=true leaves
 // the cluster and git host dir for inspection; otherwise both are torn down
@@ -34,9 +58,20 @@ func Provision(t *testing.T) *Env {
 	// stands in for the tenant-local ArgoCD the e2e platform stack does not
 	// install. mktemp dirs are 0700; the server container runs non-root, so
 	// open the shared git root up.
-	gitHostDir, err := os.MkdirTemp("/tmp", "inari-e2e-git.")
-	if err != nil {
-		t.Fatalf("creating git host dir: %v", err)
+	// GIT_HOST_DIR pins the git root to a fixed path — CI pre-creates the
+	// cluster with that path already mounted (image preload happens before
+	// the suite runs), so the suite must reuse it instead of a mktemp dir.
+	gitHostDir := c.GitHostDir
+	if gitHostDir != "" {
+		if err := os.MkdirAll(gitHostDir, 0o777); err != nil {
+			t.Fatalf("creating git host dir: %v", err)
+		}
+	} else {
+		var err error
+		gitHostDir, err = os.MkdirTemp("/tmp", "inari-e2e-git.")
+		if err != nil {
+			t.Fatalf("creating git host dir: %v", err)
+		}
 	}
 	if err := os.Chmod(gitHostDir, 0o777); err != nil {
 		t.Fatalf("chmod git host dir: %v", err)
@@ -57,17 +92,27 @@ func Provision(t *testing.T) *Env {
 
 	// extraMounts: the host git root lands at /git inside the kind node so
 	// the server pod can hostPath-mount it for the local git provider.
-	logf("creating kind cluster %q", c.ClusterName)
-	kindConfig := fmt.Sprintf(`kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-  - role: control-plane
-    extraMounts:
-      - hostPath: %s
-        containerPath: /git
-`, gitHostDir)
-	if err := kind.Recreate(c.ClusterName, kindConfig); err != nil {
-		t.Fatalf("kind create cluster: %v", err)
+	// E2E_ADOPT_CLUSTER=1: reuse a cluster the workflow already created and
+	// preloaded with cached images (CI fast path); a missing cluster is
+	// still created as usual so local runs keep working.
+	if c.AdoptCluster {
+		exists, err := kind.ClusterExists(c.ClusterName)
+		if err != nil {
+			t.Fatalf("checking kind cluster %q: %v", c.ClusterName, err)
+		}
+		if exists {
+			logf("adopting pre-created kind cluster %q (E2E_ADOPT_CLUSTER=1)", c.ClusterName)
+		} else {
+			logf("E2E_ADOPT_CLUSTER=1 but cluster %q missing — creating it", c.ClusterName)
+			if err := kind.Recreate(c.ClusterName, kindConfigYAML(gitHostDir, c.KindNodeImage)); err != nil {
+				t.Fatalf("kind create cluster: %v", err)
+			}
+		}
+	} else {
+		logf("creating kind cluster %q", c.ClusterName)
+		if err := kind.Recreate(c.ClusterName, kindConfigYAML(gitHostDir, c.KindNodeImage)); err != nil {
+			t.Fatalf("kind create cluster: %v", err)
+		}
 	}
 	if _, err := kube.Kubectl("config", "use-context", "kind-"+c.ClusterName); err != nil {
 		t.Fatalf("switching kube context: %v", err)
@@ -78,9 +123,8 @@ nodes:
 		t.Fatalf("kind load images: %v", err)
 	}
 
-	// install-operators.sh STAYS shell — it is a chart asset used outside
-	// the tests (umbrella-to-gitops migration test); the provisioner execs
-	// it rather than absorbing it.
+	// install-operators.sh STAYS shell — it is a test asset shared with
+	// local e2e runs; the provisioner execs it rather than absorbing it.
 	logf("installing prerequisite operators (CNPG + Keycloak — the charts never install operators)")
 	if _, err := kube.Run("bash", filepath.Join(c.RepoRoot, "scripts/install-operators.sh")); err != nil {
 		t.Fatalf("install-operators.sh: %v", err)

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# LEGACY: imperative operator install used only by the umbrella-to-gitops
-# migration test (.github/workflows/upgrade.yaml). New installs get the
+# Imperative operator install used by the e2e golden-path suite
+# (scripts/e2e/stack/suite/provide.go). New production installs get the
 # operators from ArgoCD Applications (gitops/operators/).
 #
-# Installs the cluster operators the old inari-platform umbrella assumed:
+# Installs the cluster operators the inari-platform chart assumes:
 # CloudNativePG (CNPG) and the Keycloak operator, incl. their CRDs.
 # The chart never installs operators itself — this script is the day-0
-# prerequisite step for clusters that don't have them yet. Idempotent.
+# prerequisite step for test clusters that don't have them yet. Idempotent.
 set -euo pipefail
 
 # The chart requires CNPG >= 1.25 (declarative managed roles + Database CRs).
@@ -23,8 +23,14 @@ if kubectl get crd clusters.postgresql.cnpg.io >/dev/null 2>&1; then
 else
   log "installing CNPG operator $CNPG_VERSION"
   command -v helm >/dev/null || { echo "helm required for the CNPG operator" >&2; exit 1; }
-  helm repo add cnpg https://cloudnative-pg.github.io/charts >/dev/null
-  helm repo update cnpg >/dev/null
+  if [ "${HELM_REPOS_SEEDED:-}" = "1" ]; then
+    # CI helm cache hit: repo config + index restored — add/update would
+    # re-fetch the index over the network and defeat the cache.
+    log "HELM_REPOS_SEEDED=1 — skipping cnpg repo add/update"
+  else
+    helm repo add cnpg https://cloudnative-pg.github.io/charts >/dev/null
+    helm repo update cnpg >/dev/null
+  fi
   helm upgrade --install cnpg cnpg/cloudnative-pg \
     --version "$CNPG_VERSION" \
     --namespace cnpg-system --create-namespace --wait --timeout 5m

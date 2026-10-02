@@ -1,13 +1,29 @@
 #!/usr/bin/env bash
-# Side-loads the private inari-operator image into a kind cluster. The image
-# package on ghcr is not public, so anonymous pulls inside kind fail; the
-# chart's pullPolicy is IfNotPresent, so a pre-loaded image is used as-is.
+# Ensures the private inari-operator image is available locally and optionally
+# side-loads it into a kind cluster. The image package on ghcr is not public,
+# so anonymous pulls inside kind fail; the chart's pullPolicy is IfNotPresent,
+# so a pre-loaded image is used as-is.
 #
-# Usage: scripts/preload-operator-image.sh <kind-cluster-name>
+# Usage:
+#   scripts/preload-operator-image.sh <kind-cluster-name>
+#   scripts/preload-operator-image.sh --docker-only
 # Requires: GHCR_TOKEN (read:packages on ghcr), GH_TOKEN for gh api.
 set -euo pipefail
 
-CLUSTER="${1:?kind cluster name required}"
+DOCKER_ONLY=false
+CLUSTER=""
+case "${1:-}" in
+  --docker-only)
+    DOCKER_ONLY=true
+    ;;
+  "")
+    echo "usage: $0 <kind-cluster-name>|--docker-only" >&2
+    exit 1
+    ;;
+  *)
+    CLUSTER="$1"
+    ;;
+esac
 : "${GHCR_TOKEN:?GHCR_TOKEN (read:packages) required}"
 
 echo "$GHCR_TOKEN" | docker login ghcr.io -u "${GHCR_USERNAME:-github}" --password-stdin
@@ -32,4 +48,9 @@ fi
 docker pull "ghcr.io/7k-inari/inari-operator:latest"
 docker tag "ghcr.io/7k-inari/inari-operator:latest" \
   "ghcr.io/7k-inari/inari-operator:${APP_VERSION}"
-kind load docker-image "ghcr.io/7k-inari/inari-operator:${APP_VERSION}" --name "$CLUSTER"
+
+if $DOCKER_ONLY; then
+  echo "${APP_VERSION}"
+else
+  kind load docker-image "ghcr.io/7k-inari/inari-operator:${APP_VERSION}" --name "$CLUSTER"
+fi

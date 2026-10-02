@@ -132,9 +132,70 @@ Env knobs (defaults in `stack/suite/provision.go`): `CLUSTER_NAME`,
 `NAMESPACE`, `TENANT`, `SERVER_IMAGE` / `AGENT_IMAGE`, `HELM_CHARTS_DIR`
 plus the per-chart `*_CHART_DIR` overrides, `VAULT_DEV_TOKEN`,
 `INARI_E2E_CACHE_BACKEND` (memory|redis; redis default on the HA leg),
+`KIND_NODE_IMAGE` (default: pinned `kindest/node` digest from
+`stack/testdata/images.txt`; empty = kind's built-in default),
+`E2E_ADOPT_CLUSTER=1` + `GIT_HOST_DIR` (reuse a pre-created cluster and a
+fixed git root — CI's image-preload path; locals leave both unset),
+`HELM_REPOS_SEEDED=1` (skip helm repo add/update — CI sets it on a helm
+cache hit; the restored `~/.config/helm` + `~/.cache/helm` already carry
+the repo config and indexes),
 `E2E_PROVISION_ONLY=1` (bring-up without assertions — local use only; CI
 no longer uses it: the nightly asserts too, incl. quarantined tests via
 `-args -include-quarantined`).
+
+## CI caching
+
+The reusable `e2e-stack.yaml` workflow caches everything the stack leg
+pulls repeatedly. All caches are keyed on exact pinned versions — a bump
+MUST miss the cache; mutable tags are never cached.
+
+| Cache | Key | Invalidates when |
+| --- | --- | --- |
+| Image tar (`/tmp/e2e-images/images.tar`) | `e2e-images-{os}-{hash(images.txt)}` (no restore-keys) | any pin in `images.txt` changes |
+| Helm repo config + index (`~/.config/helm` + `~/.cache/helm`) | `helm-{os}-{hash(images.txt)}` (+ soft `helm-{os}-` restore-key) | chart pin bump (manifest records pins) |
+| Go modules | setup-go hash of `stack/go.sum` (`cache-dependency-path`) | stack dep bump |
+| Playwright browsers | `playwright-{os}-{ImageVersion}-{hash(ui package-lock.json)}` | ui lockfile or GH runner image bump |
+| Buildx layers (inari-agent, repair-path inari-server) | GHA cache scopes `inari-agent` / `inari-server` | automatic per-layer |
+
+**Image preload mechanism**: a single `docker save` tar of every image in
+`stack/testdata/images.txt` (kind node image, CNPG operator + postgres
+operand, keycloak + operator, NATS trio, OpenFGA, Vault, ESO, HA redis,
+console nginx/oras, curl). On a cache hit the workflow `docker load`s the
+tar (for the `kindest/node` image), pre-creates the cluster with
+`kind create`, and runs one `kind load image-archive` (targets all nodes —
+HA-leg safe); the Go suite then ADOPTS that cluster (`E2E_ADOPT_CLUSTER=1`,
+`GIT_HOST_DIR=/tmp/inari-e2e-git`) instead of recreating an empty one. On a
+miss all images are pulled in parallel (`xargs -P8`) and saved to the tar.
+Chosen over a runner-local registry + containerd mirror: fewer moving
+parts, no mirror plumbing in the suite's kind config, and identical
+behavior on the HA leg. Chart installs force
+`imagePullPolicy: IfNotPresent` via e2e-only values/`--set` overrides
+(never production defaults) so preloaded images are used as-is, and the
+rendered image refs must match the cached names EXACTLY — containerd
+image identity is the full ref string, so the HA redis set pins
+`redis.image.registry=docker.io` (the bitnami subchart's default
+`registry-1.docker.io` would silently miss the preload and re-pull).
+The kind node image is passed to `kind create` tag-only: `docker load`
+does not restore RepoDigests, so a `repo:tag@digest` inspect fails on
+the loaded image and kind would re-fetch the manifest from Docker Hub
+on every hit. On a helm cache hit the workflow sets
+`HELM_REPOS_SEEDED=1` and repo add/update are skipped — otherwise they
+re-fetch every index each run and the helm cache saves nothing.
+
+**Excluded from the tar** (would break cache correctness): the per-release
+`ghcr.io/7k-inari/inari-server:<tag>` (changes every run — pulled +
+cosign-verified per job), `inari/agent:e2e` (built in-job — the buildx GHA
+cache covers it), and `ghcr.io/7k-inari/inari-operator:*` (private,
+dynamic appVersion tag).
+
+**Regenerating the manifest**: bump the pin (chart `--version` in
+`stack/suite/provision.go`, `defaultKindNodeImage` in
+`stack/suite/provide.go`, `CNPG_VERSION`/`KC_VERSION` in
+`scripts/install-operators.sh`, or a chart values image), update the
+matching pin at the top of `stack/testdata/gen-images.sh`, then run
+`stack/testdata/gen-images.sh > stack/testdata/images.txt` and review the
+diff. The new file hash becomes the new cache key — no manual cache
+busting needed.
 
 ### API schema conformance
 

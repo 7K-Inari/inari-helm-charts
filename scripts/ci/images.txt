@@ -1,0 +1,38 @@
+# CI image cache manifest for .github/workflows/ci.yaml install-test.
+# Every image the gitops stack (ArgoCD + operators + platform + nats + openfga)
+# pulls at its pinned versions. Bump ANY entry -> new cache key.
+#
+# Excluded (do not add — would break cache correctness):
+#   - ghcr.io/7k-inari/inari-operator:* — private image, handled by
+#     scripts/preload-operator-image.sh + operator-image artifact.
+#   - ghcr.io/7k-inari/inari-server:* / inari-console:* — optional apps whose
+#     published tags change every release.
+
+# kind node image (matches helm/kind-action@v1.12.0 default for kind v0.26.0)
+kindest/node:v1.32.0@sha256:c48c62eac5da28cdadcf560d1d8616cfa6783b58f0d94cf63ad1bf49600cb027
+
+# ArgoCD v3.1.5 install manifest images
+quay.io/argoproj/argocd:v3.1.5
+ghcr.io/dexidp/dex:v2.43.0
+public.ecr.aws/docker/library/redis:7.2.7-alpine
+
+# operators (gitops/operators/cnpg.yaml chart 0.29.0;
+# gitops/operators/keycloak-operator/ 26.3.2)
+ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0
+ghcr.io/cloudnative-pg/postgresql:18.4-system-trixie
+quay.io/keycloak/keycloak-operator:26.3.2
+
+# platform (charts/inari-platform values)
+quay.io/keycloak/keycloak:26.3.2
+adorsys/keycloak-config-cli:6.5.1-26
+
+# nats/nats chart 1.3.2
+nats:2.11.1-binary-alpine
+natsio/nats-box:0.17.0
+natsio/nats-server-config-reloader:0.17.1
+
+# openfga/openfga chart 0.2.27
+openfga/openfga:v1.8.9
+
+# verify / utility jobs
+curlimages/curl:8.10.1

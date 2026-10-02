@@ -60,6 +60,9 @@ type ProvisionConfig struct {
 	ServerImage       string
 	AgentImage        string
 	VaultDevToken     string
+	KindNodeImage     string // KIND_NODE_IMAGE (default: pinned kindest/node)
+	AdoptCluster      bool   // E2E_ADOPT_CLUSTER=1 — reuse a pre-created cluster
+	GitHostDir        string // GIT_HOST_DIR — fixed git root (CI pre-created cluster)
 	RepoRoot          string // HELM_CHARTS_DIR
 	PlatformChartDir  string
 	ServerChartDir    string
@@ -105,6 +108,9 @@ func LoadProvisionConfig(t *testing.T) *ProvisionConfig {
 		ServerImage:      envOr("SERVER_IMAGE", "inari/server:e2e"),
 		AgentImage:       envOr("AGENT_IMAGE", "inari/agent:e2e"),
 		VaultDevToken:    envOr("VAULT_DEV_TOKEN", "e2e-root-token"),
+		KindNodeImage:    envOr("KIND_NODE_IMAGE", defaultKindNodeImage),
+		AdoptCluster:     os.Getenv("E2E_ADOPT_CLUSTER") == "1",
+		GitHostDir:       os.Getenv("GIT_HOST_DIR"),
 		RepoRoot:         repoRoot,
 		PlatformChartDir: envOr("PLATFORM_CHART_DIR", filepath.Join(repoRoot, "charts/inari-platform")),
 		ServerChartDir:   envOr("SERVER_CHART_DIR", filepath.Join(repoRoot, "charts/inari-server")),
@@ -170,7 +176,18 @@ func waitCNPG(ns string) error {
 
 // helmRepoSetup registers every helm repo SERIALLY (shared local repo cache
 // races under concurrency — the reason the script did repo setup up front).
+// HELM_REPOS_SEEDED=1 skips add/update entirely: CI restores ~/.config/helm
+// + ~/.cache/helm from the helm cache, and add/update would re-fetch every
+// index over the network anyway, making the cache dead weight. With the
+// restored config+index, helm resolves pinned chart versions offline (the
+// small chart tgz still downloads). A stale index missing a newly pinned
+// version fails loudly — the correct signal to regenerate images.txt (the
+// cache key input).
 func helmRepoSetup() error {
+	if os.Getenv("HELM_REPOS_SEEDED") == "1" {
+		logf("HELM_REPOS_SEEDED=1 — helm repos restored from cache, skipping repo add/update")
+		return nil
+	}
 	for _, r := range [][2]string{
 		{"openfga", "https://openfga.github.io/helm-charts"},
 		{"nats", "https://nats-io.github.io/k8s/helm/charts/"},
@@ -208,6 +225,10 @@ func installNATS(c *ProvisionConfig) error {
 	if err := helm.UpgradeInstall("nats", "nats/nats", "--version", "1.3.2",
 		"--namespace", c.Namespace,
 		"-f", testdataFile(values),
+		// e2e-only: preloaded CI images must be used as-is (the chart's
+		// per-image pullPolicy defaults are empty → k8s default, pinned tags
+		// already imply IfNotPresent; pin it explicitly for the cache).
+		"--set", "global.image.pullPolicy=IfNotPresent",
 		"--wait", "--timeout", "8m"); err != nil {
 		return err
 	}
@@ -249,6 +270,9 @@ func installOpenFGA(c *ProvisionConfig) error {
 		"--set", "datastore.secretKeys.uriKey=openfga-uri",
 		"--set", "datastore.migrationType=initContainer",
 		"--set", "playground.enabled=false",
+		// e2e-only: the chart defaults image.pullPolicy=Always, which would
+		// re-pull every run and defeat the CI image cache.
+		"--set", "image.pullPolicy=IfNotPresent",
 		"--wait", "--timeout", "5m"); err != nil {
 		return err
 	}
@@ -260,9 +284,11 @@ func installOpenFGA(c *ProvisionConfig) error {
 }
 
 // installVaultESO: OIDC client-secret delivery path — Vault (dev mode) +
-// ESO + the manifest-rendered ExternalSecret.
+// ESO + the manifest-rendered ExternalSecret. Both charts are pinned
+// (--version): the CI image cache keys on exact chart/image versions
+// (testdata/images.txt), so unpinned charts would silently invalidate it.
 func installVaultESO(c *ProvisionConfig) error {
-	if err := helm.UpgradeInstall("vault", "hashicorp/vault",
+	if err := helm.UpgradeInstall("vault", "hashicorp/vault", "--version", "0.34.1",
 		"--namespace", c.Namespace,
 		"--set", "server.dev.enabled=true",
 		"--set", "server.dev.devRootToken="+c.VaultDevToken,
@@ -270,7 +296,7 @@ func installVaultESO(c *ProvisionConfig) error {
 		"--wait", "--timeout", "5m"); err != nil {
 		return err
 	}
-	if err := helm.UpgradeInstall("external-secrets", "external-secrets/external-secrets",
+	if err := helm.UpgradeInstall("external-secrets", "external-secrets/external-secrets", "--version", "2.11.0",
 		"--namespace", "external-secrets", "--create-namespace",
 		"--set", "installCRDs=true",
 		"--wait", "--timeout", "5m"); err != nil {
@@ -393,7 +419,18 @@ func installServer(c *ProvisionConfig) error {
 		"--wait", "--timeout", "10m",
 	}
 	if c.CacheBackend == "redis" {
-		args = append(args, "--set", "redis.enabled=true", "--set", "cache.backend=redis")
+		args = append(args, "--set", "redis.enabled=true", "--set", "cache.backend=redis",
+			// e2e-only: the redis subchart (bitnami 28.2.4) defaults to the
+			// MUTABLE bitnami/redis:latest tag — unpinnable and uncacheable.
+			// Pin the frozen bitnamilegacy repo's newest tag instead
+			// (recorded in testdata/images.txt). registry=docker.io is
+			// load-bearing: the subchart defaults to registry-1.docker.io,
+			// which containerd treats as a DIFFERENT image identity than the
+			// preloaded docker.io/bitnamilegacy/redis:8.2.1 — the preload
+			// would be ignored and the node would re-pull every run.
+			"--set", "redis.image.registry=docker.io",
+			"--set", "redis.image.repository=bitnamilegacy/redis",
+			"--set", "redis.image.tag=8.2.1")
 	}
 	if err := helm.UpgradeInstall("inari-server", args...); err != nil {
 		return err

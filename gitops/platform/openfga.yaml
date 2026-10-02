@@ -1,6 +1,5 @@
 # OpenFGA — postgres datastore on the CNPG cluster (secret inari-db created
-# by platform-config, sync wave 0). Values mirror the old umbrella openfga:
-# subchart section.
+# by platform-config, sync wave 0).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
