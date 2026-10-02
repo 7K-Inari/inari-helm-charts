@@ -75,4 +75,46 @@ export class ApiClient {
   post<T>(path: string): Promise<T> {
     return this.request<T>("POST", path);
   }
+
+  /**
+   * Negative-path escape hatch: send a request (optionally with a JSON body)
+   * and return the raw status + parsed body WITHOUT throwing on non-2xx.
+   * Reserved for specs whose whole point is asserting a rejection (e.g. the
+   * 409 guardrails in specs/rbac/) — never use it to mutate state a spec is
+   * supposed to exercise through the UI, and never for setup.
+   */
+  async raw(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<{ status: number; body: unknown }> {
+    const res = await fetch(`${this.base}${path}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${this.token}`,
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    const text = await res.text();
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = text;
+    }
+    return { status: res.status, body: parsed };
+  }
+
+  /** Resolve an org's slug from its display name (e.g. "E2E Org" → "e2e-org"). */
+  async resolveOrgSlug(displayName: string): Promise<string> {
+    const body = await this.get<{ tenants?: { slug: string; displayName: string }[] | null }>(
+      "/api/v1/tenants",
+    );
+    const match = (body.tenants ?? []).find((t) => t.displayName === displayName);
+    if (!match) {
+      throw new Error(`api: no tenant with displayName "${displayName}"`);
+    }
+    return match.slug;
+  }
 }

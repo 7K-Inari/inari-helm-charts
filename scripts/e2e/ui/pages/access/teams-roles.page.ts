@@ -33,4 +33,14 @@ export class TeamsRolesTabPage {
   async saveChanges(): Promise<void> {
     await this.saveButton().click();
   }
+
+  /** "Discard" button, visible only while a dirty draft exists. */
+  discardButton(): Locator {
+    return this.page.getByRole("button", { name: "Discard", exact: true });
+  }
+
+  /** Tab-level error card showing the server's rejection message. */
+  errorCard(): Locator {
+    return this.page.locator(".text-destructive").first();
+  }
 }

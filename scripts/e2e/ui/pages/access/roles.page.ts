@@ -20,6 +20,24 @@ export class RolesTabPage {
     return this.page.getByRole("row", { name: new RegExp(name) });
   }
 
+  /** "Built-in" badge inside a role row. */
+  builtinBadge(row: Locator): Locator {
+    return row.getByText("Built-in", { exact: true });
+  }
+
+  /** Edit button inside a role row. */
+  editButton(row: Locator): Locator {
+    return row.getByRole("button", { name: "Edit", exact: true });
+  }
+
+  /**
+   * Delete button inside a role row. Only rendered for custom roles
+   * (roles-tab.tsx gates it on `!role.builtin`); specs assert absence.
+   */
+  deleteButton(row: Locator): Locator {
+    return row.getByRole("button", { name: "Delete", exact: true });
+  }
+
   /** Destructive error surface (save/delete API errors, validation). */
   errorMessage(): Locator {
     return this.page.locator(".text-destructive").first();
@@ -39,6 +57,16 @@ export class RolesTabPage {
   /** Open the editor for an existing role. */
   async openEditor(roleName: string): Promise<void> {
     await this.roleRow(roleName).getByRole("button", { name: "Edit" }).click();
+  }
+
+  /** "Name" input inside the role editor card. */
+  editorNameInput(): Locator {
+    return this.page.locator("#role-name");
+  }
+
+  /** Cancel button inside the role editor card. */
+  editorCancelButton(): Locator {
+    return this.page.getByRole("button", { name: "Cancel", exact: true });
   }
 
   /** Checkbox for one permission slug in the open editor. */

@@ -22,7 +22,8 @@ scripts/e2e/ui/
 │   ├── env.ts                  # env contract (UI_BASE, KC_HOST, KC_URL, TENANT_NAME, ...)
 │   ├── poll.ts                 # poll(fn, { timeout, interval }) — see the polling RULE below
 │   └── api.ts                  # thin inari-server REST client (direct-grant token; reads +
-│   │                           #   DELETE for spec-owned cleanup only)
+│   │                           #   DELETE for spec-owned cleanup only + raw() for
+│   │                           #   negative-path assertions — see rule 5 below)
 ├── pages/
 │   ├── login.page.ts           # KC 26 two-step form (username → submit → password)
 │   ├── app-shell.page.ts       # boot gate, tenant cards, sidebar nav, "Loading…" waits
@@ -31,9 +32,11 @@ scripts/e2e/ui/
     ├── smoke/
     │   └── access-tabs.spec.ts # @p0 @smoke — the four RBAC tabs render their markers
     └── rbac/
-        └── role-lifecycle.spec.ts # @p0 @rbac — custom role CRUD, team→role mapping,
-                                   #   propagation to e2e-member's /me/permissions,
-                                   #   delete-in-use 409, cleanup
+        ├── role-lifecycle.spec.ts # @p0 @rbac — custom role CRUD, team→role mapping,
+        │                          #   propagation to e2e-member's /me/permissions,
+        │                          #   delete-in-use 409, cleanup
+        └── builtin-protection.spec.ts # @p0 @rbac — built-in role rename/delete 409s (UI + API)
+                                       #   and the tenant.admin last-admin guardrail (P0-3/P0-4)
 ```
 
 The role-lifecycle spec's propagation step polls `GET /me/permissions` with
@@ -106,6 +109,12 @@ bug).
    Spec-created objects (orgs/teams/roles) go through the `fixtures/org.ts`
    unique-name factory — never create fixed-name objects that could collide
    with the seed.
+5. **API client is read-only — except `raw()`.** `ApiClient.get/post` are for
+   setup/assertion reads. The sole exception is `raw()`, which returns the
+   status without throwing and exists only for negative-path assertions where
+   the spec's subject IS the rejection (e.g. the 409 guardrails in
+   `specs/rbac/`). Never use `raw()` to set up state or to bypass the UI for
+   behavior a spec is meant to exercise through the console.
 
 ## Key constraints (learned the hard way — do not "fix")
 
