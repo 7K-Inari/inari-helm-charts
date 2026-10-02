@@ -1,0 +1,182 @@
+name: e2e-nightly
+
+# Nightly full-surface console UI e2e — NON-BLOCKING by construction: this
+# is a separate workflow, nothing references it from branch protection, and
+# the Playwright step is continue-on-error. Nightly failure ≠ release gate.
+#
+# What it does:
+#   1. Brings up the same kind stack as the release-e2e golden path
+#      (INARI_HA=false leg), pinned to the inari-server tag resolved from
+#      charts/inari-server appVersion on main.
+#   2. Runs the FULL Playwright suite (@p0|@p1|@p2 INCLUDING @quarantine) —
+#      quarantined tests only ever run here.
+#   3. Runs the flake reporter (report-flakes.mjs) and the quarantine sweep
+#      (quarantine-issues.mjs: files/dedupes `e2e-flake` issues for tests
+#      flaky in 2+ nightly runs within 7 days).
+#
+# Artifacts (flake report + full Playwright results) are retained 14 days.
+on:
+  schedule:
+    # 03:17 UTC daily — off-peak.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read # download prior runs' ui-e2e-flakes artifacts
+  issues: write # quarantine-issues.mjs files e2e-flake issues
+
+concurrency:
+  group: e2e-nightly
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # BEGIN bring-up (extract to reusable workflow in W7) — mirrors the
+      # release-e2e.yaml golden-path job (INARI_HA=false leg). Keep this
+      # block contiguous so the W7 reusable-workflow sibling can lift it out
+      # verbatim.
+      - name: Checkout bundle (charts under test)
+        uses: actions/checkout@v4
+        with:
+          path: bundle
+
+      - name: Resolve inari-server tag from chart appVersion
+        id: resolve
+        working-directory: bundle
+        run: |
+          set -euo pipefail
+          app_version="$(awk '/^appVersion:/ {print $2}' charts/inari-server/Chart.yaml | tr -d '"')"
+          server_tag="v${app_version#v}"
+          # GHCR image tags are UNPREFIXED (1.8.0), git tags are v-prefixed.
+          echo "server-tag=$server_tag" >> "$GITHUB_OUTPUT"
+          echo "image-tag=${app_version#v}" >> "$GITHUB_OUTPUT"
+          if ! git ls-remote --exit-code https://github.com/7K-Inari/inari-server.git \
+            "refs/tags/$server_tag" >/dev/null 2>&1; then
+            echo "inari-server tag $server_tag does not exist" >&2
+            exit 1
+          fi
+          echo "resolved inari-server tag: $server_tag"
+
+      - name: Checkout inari-server (migrations dir)
+        uses: actions/checkout@v4
+        with:
+          repository: 7K-Inari/inari-server
+          ref: ${{ steps.resolve.outputs.server-tag }}
+          path: inari-server
+
+      - name: Checkout inari-agent
+        uses: actions/checkout@v4
+        with:
+          repository: 7K-Inari/inari-agent
+          ref: main
+          path: inari-agent
+
+      - name: Checkout inari-operator (operator + console smoke charts)
+        uses: actions/checkout@v4
+        with:
+          repository: 7K-Inari/inari-operator
+          ref: main
+          path: inari-operator
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Pull and verify published server image
+        env:
+          IMAGE_REF: ghcr.io/7k-inari/inari-server:${{ steps.resolve.outputs.image-tag }}
+        run: |
+          set -euo pipefail
+          cosign verify "$IMAGE_REF" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp https://github.com/7K-Inari/inari-server/
+          docker pull "$IMAGE_REF"
+          docker tag "$IMAGE_REF" inari/server:e2e
+
+      - name: Build agent image
+        run: docker build -f inari-agent/Dockerfile -t inari/agent:e2e ./inari-agent
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: inari-e2e-nightly
+          wait: 60s
+
+      - name: Run golden path
+        working-directory: bundle
+        run: >-
+          AGENT_CHART_DIR=${{ github.workspace }}/inari-agent/charts/inari-agent
+          OPERATOR_CHART_DIR=${{ github.workspace }}/inari-operator/charts/inari-operator
+          KEEP_CLUSTER=true INARI_HA=false
+          bash scripts/e2e/golden-path.sh
+      # END bring-up (extract to reusable workflow in W7)
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bundle/scripts/e2e/ui/package-lock.json') }}
+
+      - name: Run console UI e2e (Playwright, full suite incl. @quarantine)
+        # Non-blocking: a failing test here is signal for the flake sweep,
+        # not a release gate. continue-on-error keeps the reporter/artifact
+        # steps (and the job result) green while the step outcome stays
+        # visible in the UI.
+        id: playwright
+        continue-on-error: true
+        working-directory: bundle
+        run: |
+          set -euo pipefail
+          KC=http://127.0.0.1:18091
+
+          kubectl -n inari port-forward svc/inari-console 18080:80 >/dev/null 2>&1 &
+          kubectl -n inari port-forward svc/inari-server 18090:8080 >/dev/null 2>&1 &
+          kubectl -n inari port-forward svc/keycloak-service 18091:8080 >/dev/null 2>&1 &
+          sleep 3
+
+          node scripts/e2e/ui/seed/seed-personas.mjs
+
+          helm upgrade inari-console charts/inari-console --namespace inari \
+            --reuse-values --set keycloakUrl="$KC"
+          kubectl -n inari rollout status deployment/inari-console --timeout=180s
+
+          node scripts/e2e/lib/ui-proxy.mjs &
+          PROXY_PID=$!
+          trap 'kill $PROXY_PID 2>/dev/null || true' EXIT
+          cd scripts/e2e/ui
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test --config playwright.config.ci.ts --grep "@p0|@p1|@p2"
+
+      - name: Report UI e2e flakes
+        if: always()
+        working-directory: bundle/scripts/e2e/ui
+        run: node report-flakes.mjs
+
+      - name: Upload flake report + full Playwright results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-e2e-flakes-nightly
+          path: |
+            bundle/scripts/e2e/ui/test-results/
+            bundle/scripts/e2e/ui/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+          compression-level: 0
+
+      - name: Quarantine sweep (file/dedupe e2e-flake issues)
+        # Files an `e2e-flake` issue for any test flaky in 2+ nightly runs
+        # within 7 days; comments on the existing open issue for the same
+        # test path instead of opening duplicates.
+        if: always()
+        working-directory: bundle/scripts/e2e/ui
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node quarantine-issues.mjs
+
+      - name: Delete kind cluster
+        if: always()
+        run: kind delete cluster --name inari-e2e-nightly || true

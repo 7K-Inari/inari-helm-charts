@@ -31,7 +31,35 @@ scripts/e2e/
 | Golden path (HA) | `golden-path.sh` (`INARI_HA=true`) | bash script on kind | `release-e2e.yaml` job `golden-path` (matrix `ha: true`) on Release PRs | Yes — Release-PR gate |
 | API schema conformance | `api/api_schema_e2e_test.go` | `go test -tags=e2e` inside the inari-server checkout at the pinned tag | `release-e2e.yaml` step "Run api-schema e2e against the live stack" (after golden-path) | Yes — Release-PR gate |
 | Console UI e2e | `ui/` (Playwright Test) + `lib/ui-proxy.mjs` + `ui/seed/seed-personas.mjs` | `npx playwright test --config playwright.config.ci.ts --grep @p0 --grep-invert @quarantine` in `ui/` | `release-e2e.yaml` step "Run console UI e2e (Playwright)" on BOTH HA matrix legs (after api-schema) | Yes — Release-PR gate |
+| Console UI e2e (full, incl. quarantine) | `ui/` (Playwright Test) | `npx playwright test --config playwright.config.ci.ts --grep "@p0\|@p1\|@p2"` (includes `@quarantine`, `continue-on-error`) | `.github/workflows/e2e-nightly.yaml` (cron 03:17 UTC + `workflow_dispatch`) | No — nightly only, non-blocking |
 | kubectl access | `kubectl/kubectl-access.sh` | bash script (docker etcd + kube-apiserver; no kind) | not wired into CI yet | No — manual scenario |
+
+## Flakiness containment
+
+The gate NEVER runs a quarantined test — the direct analog of inari-server's
+`flaky` build-tag convention.
+
+- **Gate command in effect** (release-e2e.yaml, both HA legs):
+  `npx playwright test --config playwright.config.ci.ts --grep @p0 --grep-invert @quarantine`.
+  CI runs with `retries: 2`, so a test that passes only after a retry is
+  green in the gate but recorded as a flake candidate.
+- **Flake reporter** (`ui/report-flakes.mjs`): post-processes the Playwright
+  JSON report after every CI run (gate + nightly), logs a summary, and
+  writes `test-results/flake-report.json` (test title, file, run id,
+  timestamp, branch). Artifacts: `ui-e2e-flakes-ha-<bool>` on gate runs
+  (7-day retention), `ui-e2e-flakes-nightly` on nightly runs (14-day
+  retention, plus full Playwright HTML/JUnit results).
+- **Quarantine policy** (manual part): when an `e2e-flake` issue is triaged,
+  tag the test `@quarantine` in its spec title. Quarantined tests are
+  excluded from the gate (`--grep-invert @quarantine`) and run only in the
+  nightly. De-quarantine (remove the tag, close the issue) once the test
+  has been stable in the nightly for ~2 weeks.
+- **Quarantine automation** (`ui/quarantine-issues.mjs`, nightly only):
+  aggregates the last 7 days of `ui-e2e-flakes-*` artifacts; a test flaky in
+  2+ nightly runs within the window gets an issue titled
+  `[flake] <test path> — <test title>` labeled `e2e-flake`. Dedupe is by
+  test path: an open issue for the same path gets a comment with the new
+  occurrences instead of a duplicate.
 
 ## Running locally
 

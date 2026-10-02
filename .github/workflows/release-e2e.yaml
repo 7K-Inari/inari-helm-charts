@@ -387,6 +387,24 @@ jobs:
           npx playwright install --with-deps chromium
           npx playwright test --config playwright.config.ci.ts --grep @p0 --grep-invert @quarantine
 
+      - name: Report UI e2e flakes
+        # Post-process the Playwright JSON report: any test that passed only
+        # after a retry is a flake candidate. Never fails the gate; writes
+        # test-results/flake-report.json (uploaded below) for the nightly
+        # quarantine sweep.
+        if: always()
+        working-directory: bundle/scripts/e2e/ui
+        run: node report-flakes.mjs
+
+      - name: Upload flake report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-e2e-flakes-ha-${{ matrix.ha }}
+          path: bundle/scripts/e2e/ui/test-results/flake-report.json
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload UI e2e artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v4
