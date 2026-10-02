@@ -123,6 +123,215 @@ func (c *Client) ClientSecret(adminToken, clientID string) (string, error) {
 	return sec.Value, nil
 }
 
+// ---------------------------------------------------------------------------
+// Admin writes (phase 3 of the shell→Go migration: the KC realm/user
+// seeding ported from golden-path.sh). Bodies stay literal JSON so the GAP
+// shapes remain byte-identical to the script's.
+// ---------------------------------------------------------------------------
+
+// post issues an authenticated POST with a JSON body (no response body
+// expected; curl -sf surfaces non-2xx as an error).
+func (c *Client) post(path, token, jsonBody string) error {
+	_, err := kube.Curl(c.NS, c.Toolbox,
+		"-X", "POST", "-H", "Authorization: Bearer "+token,
+		"-H", "Content-Type: application/json",
+		"-d", jsonBody, "-o", "/dev/null", c.base()+path)
+	return err
+}
+
+// put issues an authenticated PUT with an optional JSON body.
+func (c *Client) put(path, token, jsonBody string) error {
+	args := []string{"-X", "PUT", "-H", "Authorization: Bearer " + token, "-o", "/dev/null"}
+	if jsonBody != "" {
+		args = append(args, "-H", "Content-Type: application/json", "-d", jsonBody)
+	}
+	args = append(args, c.base()+path)
+	_, err := kube.Curl(c.NS, c.Toolbox, args...)
+	return err
+}
+
+// FindUser returns the internal id of the user, or "" when absent.
+func (c *Client) FindUser(token, username string) (string, error) {
+	var users []struct {
+		ID string `json:"id"`
+	}
+	if err := c.get("/admin/realms/inari/users?username="+username, token, &users); err != nil {
+		return "", err
+	}
+	if len(users) == 0 {
+		return "", nil
+	}
+	return users[0].ID, nil
+}
+
+// EnsureUser creates the user when missing and forces the final account
+// state either way (KC 26.x: create alone can leave the account unverified,
+// and the password grant then fails with "Account is not fully set up").
+// createJSON must carry username/credentials; updateJSON the forced state.
+func (c *Client) EnsureUser(token, username, createJSON, updateJSON string) (string, error) {
+	uid, err := c.FindUser(token, username)
+	if err != nil {
+		return "", err
+	}
+	if uid == "" {
+		if err := c.post("/admin/realms/inari/users", token, createJSON); err != nil {
+			return "", fmt.Errorf("creating user %s: %w", username, err)
+		}
+		if uid, err = c.FindUser(token, username); err != nil || uid == "" {
+			return "", fmt.Errorf("user %s not found after create (id=%q, err=%v)", username, uid, err)
+		}
+	}
+	if err := c.put("/admin/realms/inari/users/"+uid, token, updateJSON); err != nil {
+		return "", fmt.Errorf("forcing final state for user %s: %w", username, err)
+	}
+	return uid, nil
+}
+
+// FindClient returns the internal id (UUID) of the client with the given
+// clientId, or "" when absent.
+func (c *Client) FindClient(token, clientID string) (string, error) {
+	var clients []struct {
+		ID string `json:"id"`
+	}
+	if err := c.get("/admin/realms/inari/clients?clientId="+clientID, token, &clients); err != nil {
+		return "", err
+	}
+	if len(clients) == 0 {
+		return "", nil
+	}
+	return clients[0].ID, nil
+}
+
+// EnsureClient creates the client when missing and returns its internal id.
+func (c *Client) EnsureClient(token, clientID, createJSON string) (string, error) {
+	id, err := c.FindClient(token, clientID)
+	if err != nil {
+		return "", err
+	}
+	if id == "" {
+		if err := c.post("/admin/realms/inari/clients", token, createJSON); err != nil {
+			return "", fmt.Errorf("creating client %s: %w", clientID, err)
+		}
+		if id, err = c.FindClient(token, clientID); err != nil || id == "" {
+			return "", fmt.Errorf("client %s not found after create (id=%q, err=%v)", clientID, id, err)
+		}
+	}
+	return id, nil
+}
+
+// MapperNames lists the protocol mapper names on a client (internal id).
+func (c *Client) MapperNames(token, clientUUID string) ([]string, error) {
+	var mappers []struct {
+		Name string `json:"name"`
+	}
+	if err := c.get("/admin/realms/inari/clients/"+clientUUID+"/protocol-mappers/models", token, &mappers); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(mappers))
+	for _, m := range mappers {
+		names = append(names, m.Name)
+	}
+	return names, nil
+}
+
+// EnsureMapper adds the protocol mapper when absent. createErrs are
+// tolerated by the caller's retry loop (the script retried the audience
+// mapper three times — Keycloak occasionally 409s a fresh client).
+func (c *Client) EnsureMapper(token, clientUUID, name, createJSON string) error {
+	names, err := c.MapperNames(token, clientUUID)
+	if err != nil {
+		return err
+	}
+	for _, n := range names {
+		if n == name {
+			return nil
+		}
+	}
+	return c.post("/admin/realms/inari/clients/"+clientUUID+"/protocol-mappers/models", token, createJSON)
+}
+
+// EnsureClientScope recreates a built-in client scope the realm import
+// skipped (GAP(default-scopes): an explicit clientScopes array in the
+// import JSON suppresses Keycloak's built-ins, and every token request dies
+// with invalid_scope) and attaches it to the client's default scopes.
+// Idempotent.
+func (c *Client) EnsureClientScope(token, name, createJSON, clientUUID string) error {
+	find := func() (string, error) {
+		var scopes []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		}
+		if err := c.get("/admin/realms/inari/client-scopes", token, &scopes); err != nil {
+			return "", err
+		}
+		for _, s := range scopes {
+			if s.Name == name {
+				return s.ID, nil
+			}
+		}
+		return "", nil
+	}
+	sid, err := find()
+	if err != nil {
+		return err
+	}
+	if sid == "" {
+		if err := c.post("/admin/realms/inari/client-scopes", token, createJSON); err != nil {
+			return fmt.Errorf("creating client scope %s: %w", name, err)
+		}
+		if sid, err = find(); err != nil || sid == "" {
+			return fmt.Errorf("client scope %s not found after create (id=%q, err=%v)", name, sid, err)
+		}
+	}
+	return c.put("/admin/realms/inari/clients/"+clientUUID+"/default-client-scopes/"+sid, token, "")
+}
+
+// EnsureGroup creates the top-level group when missing and returns its id.
+func (c *Client) EnsureGroup(token, name string) (string, error) {
+	find := func() (string, error) {
+		var groups []struct {
+			ID string `json:"id"`
+		}
+		if err := c.get("/admin/realms/inari/groups?exact=true&search="+name, token, &groups); err != nil {
+			return "", err
+		}
+		if len(groups) == 0 {
+			return "", nil
+		}
+		return groups[0].ID, nil
+	}
+	id, err := find()
+	if err != nil {
+		return "", err
+	}
+	if id == "" {
+		if err := c.post("/admin/realms/inari/groups", token, `{"name":"`+name+`"}`); err != nil {
+			return "", fmt.Errorf("creating group %s: %w", name, err)
+		}
+		if id, err = find(); err != nil || id == "" {
+			return "", fmt.Errorf("group %s not found after create (id=%q, err=%v)", name, id, err)
+		}
+	}
+	return id, nil
+}
+
+// GroupByPath returns the id of the group at the given full path
+// (e.g. tenant-e2e-org/viewers), or "" when absent.
+func (c *Client) GroupByPath(token, path string) (string, error) {
+	var g struct {
+		ID string `json:"id"`
+	}
+	if err := c.get("/admin/realms/inari/group-by-path/"+path, token, &g); err != nil {
+		return "", nil // absent group 404s under curl -sf: treat as empty
+	}
+	return g.ID, nil
+}
+
+// AddUserToGroup joins the user to the group (idempotent 204).
+func (c *Client) AddUserToGroup(token, userID, groupID string) error {
+	return c.put("/admin/realms/inari/users/"+userID+"/groups/"+groupID, token, "")
+}
+
 // Claims decodes the payload of a JWT without verifying it (the suite trusts
 // the cluster-internal issuer; it only inspects claims).
 func Claims(jwt string) (map[string]any, error) {

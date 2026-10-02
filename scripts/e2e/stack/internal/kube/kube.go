@@ -23,6 +23,19 @@ func Run(name string, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
+// RunStdin executes a CLI with stdin piped in; stderr is attached to the error.
+func RunStdin(name, stdin string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	cmd.Stdin = strings.NewReader(stdin)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%s %s: %w\n%s", name, strings.Join(args, " "), err, stderr.String())
+	}
+	return stdout.String(), nil
+}
+
 // Kubectl runs kubectl with the given args.
 func Kubectl(args ...string) (string, error) { return Run("kubectl", args...) }
 

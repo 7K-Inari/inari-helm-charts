@@ -2,7 +2,7 @@
 //
 // Authenticates with a direct-grant token via the public `inari-server`
 // Keycloak client (directAccessGrantsEnabled + audience mapper are
-// provisioned by golden-path.sh — same token the golden path itself uses).
+// provisioned by the golden-path stack suite — same token the golden path itself uses).
 // Never use this client to mutate what a spec is supposed to exercise
 // through the UI; DELETE exists only for spec-owned cleanup of objects the
 // spec itself created (see specs/rbac/role-lifecycle.spec.ts).

@@ -60,19 +60,28 @@ type Env struct {
 	FGA           *fga.Client
 }
 
-// Load reads E2E_HANDOFF_PATH (written by golden-path.sh) plus the E2E_HA
-// and SERVER_MIGRATIONS_DIR env knobs, and builds the clients.
+// Load resolves the suite environment in one of two modes (phase 3 of the
+// shell→Go migration — golden-path.sh is gone):
+//   - attach: E2E_HANDOFF_PATH points at an EXISTING handoff file (written
+//     by an earlier provisioning run) — the suite asserts against that
+//     already-running stack without re-provisioning.
+//   - provision: otherwise the suite brings the whole stack up in-process
+//     (kind → operators → charts → KC seeding → tenant → agent) via
+//     Provision, writing the handoff to E2E_HANDOFF_PATH when set.
 func Load(t *testing.T) *Env {
 	t.Helper()
 	path := os.Getenv("E2E_HANDOFF_PATH")
-	if path == "" {
-		t.Fatal("E2E_HANDOFF_PATH not set: run scripts/e2e/golden-path.sh first " +
-			"(it provisions the stack and writes the handoff file)")
+	if path != "" {
+		if raw, err := os.ReadFile(path); err == nil {
+			return loadHandoff(t, path, raw)
+		}
 	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("reading handoff %s: %v", path, err)
-	}
+	return Provision(t)
+}
+
+// loadHandoff attaches to a previously provisioned stack (read-only).
+func loadHandoff(t *testing.T, path string, raw []byte) *Env {
+	t.Helper()
 	var h Handoff
 	if err := json.Unmarshal(raw, &h); err != nil {
 		t.Fatalf("parsing handoff %s: %v", path, err)
@@ -83,9 +92,17 @@ func Load(t *testing.T) *Env {
 		"org_id": h.OrgID, "git_host_dir": h.GitHostDir, "agent_chart_dir": h.AgentChartDir,
 	} {
 		if v == "" {
-			t.Fatalf("handoff %s: field %q is empty (stale handoff? re-run golden-path.sh)", path, field)
+			t.Fatalf("handoff %s: field %q is empty (stale handoff? delete %s to re-provision)", path, field, path)
 		}
 	}
+	e := newEnv(h)
+	fmt.Printf("[e2e] handoff loaded: ns=%s tenant=%s cluster=%s ha=%v\n",
+		h.Namespace, h.Tenant, h.ClusterID, e.HA)
+	return e
+}
+
+// newEnv builds the Env (clients + HA selection) around a handoff.
+func newEnv(h Handoff) *Env {
 	e := &Env{
 		Handoff:       h,
 		HA:            os.Getenv("E2E_HA") == "1",
@@ -97,10 +114,13 @@ func Load(t *testing.T) *Env {
 		NS: h.Namespace, Toolbox: h.Toolbox, Tenant: h.Tenant,
 		Token: e.KC.UserToken,
 	}
+	return e
+}
+
+// requireHAMigrations fails fast when the HA leg lacks the migrations dir.
+func (e *Env) requireHAMigrations(t *testing.T) {
+	t.Helper()
 	if e.HA && e.MigrationsDir == "" {
 		t.Fatal("E2E_HA=1 requires SERVER_MIGRATIONS_DIR pointing at inari-server's internal/db/migrations")
 	}
-	fmt.Printf("[e2e] handoff loaded: ns=%s tenant=%s cluster=%s ha=%v\n",
-		h.Namespace, h.Tenant, h.ClusterID, e.HA)
-	return e
 }

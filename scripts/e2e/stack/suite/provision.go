@@ -1,13 +1,14 @@
 //go:build e2e
 
-// Golden-path provisioning in Go — phase 2 of the shell→Go migration
-// (parent design §3): every helm install/upgrade sequence from
-// golden-path.sh lives here. The script keeps kind cluster lifecycle, the
-// git-root hostPath, and the KC realm/user seeding until phase 3.
+// Golden-path chart provisioning in Go — phases 2–3 of the shell→Go
+// migration (parent design §3): every helm install/upgrade sequence from
+// the deleted golden-path.sh lives here; kind lifecycle, the git-root
+// hostPath, and the KC realm/user seeding joined in phase 3 (provide.go,
+// seed.go).
 //
 // Install dependency graph (edges = hard readiness requirements):
 //
-//	kind + operators (CNPG, Keycloak operator)     [script / phase 3: kind.go]
+//	kind + operators (CNPG, Keycloak operator)     [provide.go]
 //	  └─ platform-config (CNPG cluster + db secrets + Keycloak realm)
 //	       ├─ Keycloak StatefulSet rollout → hostname patch → rollout
 //	       │    (issuer consistency — MUST converge before inari-server)
@@ -52,6 +53,8 @@ type ProvisionConfig struct {
 	Namespace         string
 	Tenant            string
 	Toolbox           string
+	ClusterName       string
+	KeepCluster       bool
 	HA                bool
 	CacheBackend      string // memory|redis (default memory; redis when HA)
 	ServerImage       string
@@ -96,6 +99,8 @@ func LoadProvisionConfig(t *testing.T) *ProvisionConfig {
 		Namespace:        envOr("NAMESPACE", "inari"),
 		Tenant:           envOr("TENANT", "e2e-org"),
 		Toolbox:          envOr("TOOLBOX_POD", "golden-path-tools"),
+		ClusterName:      envOr("CLUSTER_NAME", "inari-e2e"),
+		KeepCluster:      os.Getenv("KEEP_CLUSTER") == "true",
 		HA:               os.Getenv("E2E_HA") == "1",
 		ServerImage:      envOr("SERVER_IMAGE", "inari/server:e2e"),
 		AgentImage:       envOr("AGENT_IMAGE", "inari/agent:e2e"),
@@ -487,11 +492,17 @@ func awaitOutboxStream(c *ProvisionConfig) error {
 
 // ProvisionStack is TestProvisionStack: every helm install/upgrade of the
 // golden path, in dependency layers (see the package comment graph). The
-// script (phase 2) calls this between kind setup and KC seeding; phase 3
-// calls it from the in-process provisioner.
+// script (phase 2) called this between kind setup and KC seeding; phase 3
+// calls it from the in-process provisioner (Provision).
 func ProvisionStack(t *testing.T) {
-	c := LoadProvisionConfig(t)
+	provisionCharts(t, LoadProvisionConfig(t))
+}
 
+// provisionCharts installs every chart of the platform stack against an
+// EXISTING kind cluster, in dependency layers. Ends with the toolbox pod
+// running, the Keycloak issuer converged, the console smoke-verified, and
+// the INARI_OUTBOX stream formed.
+func provisionCharts(t *testing.T, c *ProvisionConfig) {
 	logf("adding helm repos (serial; component installs run concurrently below)")
 	if err := helmRepoSetup(); err != nil {
 		t.Fatalf("helm repo setup: %v", err)
@@ -581,9 +592,8 @@ type AgentInput struct {
 }
 
 // ProvisionAgent is TestProvisionAgent: the inari-agent helm install plus
-// the ESO wiring (Vault token secret + ClusterSecretStore). Split from
-// ProvisionStack because the registration token only exists after tenant +
-// cluster registration against the running server.
+// the ESO wiring, driven by the agent-input JSON the registration stage
+// wrote ($E2E_AGENT_INPUT_PATH).
 func ProvisionAgent(t *testing.T) {
 	path := os.Getenv("E2E_AGENT_INPUT_PATH")
 	if path == "" {
@@ -597,13 +607,21 @@ func ProvisionAgent(t *testing.T) {
 	if err := json.Unmarshal(raw, &in); err != nil {
 		t.Fatalf("parsing agent input %s: %v", path, err)
 	}
+	provisionAgent(t, in)
+}
+
+// provisionAgent installs the inari-agent chart and wires ESO (Vault token
+// secret + ClusterSecretStore). Split from provisionCharts because the
+// registration token only exists after tenant + cluster registration
+// against the running server.
+func provisionAgent(t *testing.T, in AgentInput) {
 	for field, v := range map[string]string{
 		"namespace": in.Namespace, "cluster_id": in.ClusterID, "org_id": in.OrgID,
 		"reg_token": in.RegToken, "agent_chart_dir": in.AgentChartDir, "agent_image": in.AgentImage,
 		"vault_dev_token": in.VaultDevToken,
 	} {
 		if v == "" {
-			t.Fatalf("agent input %s: field %q is empty", path, field)
+			t.Fatalf("agent input: field %q is empty", field)
 		}
 	}
 
@@ -615,7 +633,7 @@ func ProvisionAgent(t *testing.T) {
 	// oidcSecret.remotePath: the control plane writes the OIDC client secret
 	// at the trimmed Vault path (secrets.ClusterOIDCPath strips the
 	// "cluster:" type prefix from the cluster ID).
-	err = helm.UpgradeInstall("inari-agent", in.AgentChartDir,
+	err := helm.UpgradeInstall("inari-agent", in.AgentChartDir,
 		"--namespace", "default",
 		"--set", "image.repository="+repo,
 		"--set", "image.tag="+tag,

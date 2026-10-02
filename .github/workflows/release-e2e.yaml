@@ -11,12 +11,13 @@ name: release-e2e
   #   3. golden-path        — kind-based golden path (HA matrix preserved),
   #                           preferring the published cosign-signed image
   #                           ghcr.io/7k-inari/inari-server:vX.Y.Z over a
-  #                           rebuild. scripts/e2e/golden-path.sh provisions
-  #                           (kind + KC seeding in shell; every helm install
-  #                           via the Go provisioner it invokes);
-  #                           scripts/e2e/stack (Go, -tags=e2e) asserts the
-  #                           golden path incl. HA disruption on the HA leg
-  #                           (phase 2 of the shell→Go migration).
+  #                           rebuild. scripts/e2e/stack (Go, -tags=e2e)
+  #                           provisions the whole stack in-process (kind,
+  #                           operators, helm charts in dependency layers,
+  #                           KC seeding, tenant/cluster/agent) and asserts
+  #                           the golden path incl. HA disruption on the HA
+  #                           leg (phase 3 of the shell→Go migration —
+  #                           golden-path.sh is gone).
 #                           The inari-server checkout at the pinned tag is
 #                           still used for the Go test suites and the
 #                           api-schema e2e driver. The stack additionally
@@ -203,12 +204,12 @@ jobs:
   golden-path:
     needs: resolve
     # Two legs: the default single-replica fast gate, and the HA gate
-    # (INARI_HA=true). Mirrors inari-server's e2e.yaml timeouts.
+    # (E2E_HA=1). Mirrors inari-server's e2e.yaml timeouts.
     strategy:
       fail-fast: false
       matrix:
         ha: [false, true]
-    name: golden-path (INARI_HA=${{ matrix.ha }})
+    name: golden-path (E2E_HA=${{ matrix.ha && '1' || '0' }})
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.ha && 60 || 45 }}
     env:
@@ -277,7 +278,7 @@ jobs:
       - name: Pull and verify published server image
         # Prefer the cosign-signed artifact that actually ships over a
         # rebuild. The pulled image is re-tagged to `inari/server:e2e` —
-        # the tag golden-path.sh loads into kind — so no rebuild happens.
+        # the tag the Go stack provisioner loads into kind — so no rebuild happens.
         # cosign verification is skipped for an explicit image-tag override:
         # the edge workflow signs only the OpenAPI artifact, not the image
         # (repair/debug path — Release PRs always verify).
@@ -305,48 +306,44 @@ jobs:
       - name: Build agent image
         run: docker build -f inari-agent/Dockerfile -t inari/agent:e2e ./inari-agent
 
-      - name: Create kind cluster
+      - name: Install kind
+        # The Go provisioner creates the cluster itself (it needs a custom
+        # extraMounts config for the git hostPath), so only the binary is
+        # installed here.
         uses: helm/kind-action@v1.12.0
         with:
           cluster_name: inari-e2e
-          wait: 60s
+          install_only: true
 
-      - name: Provision golden-path stack
-        # Phase 2 of the shell→Go migration: the script owns only kind
-        # lifecycle, the git hostPath, and the KC seeding/registration —
-        # every helm install runs in the Go provisioner
-        # (scripts/e2e/stack, TestProvisionStack/TestProvisionAgent), which
-        # the script invokes mid-flow. Assertions run in the next step; the
-        # handoff JSON is the contract between the two.
+      - name: Provision + assert golden path (Go stack suite)
+        # Phase 3 of the shell→Go migration: with no usable handoff file the
+        # suite provisions the whole stack in-process (kind cluster incl. the
+        # git hostPath mount, operators, every helm chart in dependency
+        # layers, KC seeding, tenant/cluster/agent), then runs the
+        # golden-path assertions (per-phase failure identity in CI output).
+        # E2E_HA=1 on the HA leg flips the helm replica values AND unlocks
+        # the disruption subtests; SERVER_MIGRATIONS_DIR points at the
+        # inari-server checkout (HA(c) migration count).
         # KEEP_CLUSTER=true: the workflow owns teardown (final step) so the
         # diagnostics step still has a cluster to inspect on failure, and the
-        # api-schema step below still has a stack to test against.
-        working-directory: bundle
-        # Chart dirs are pinned explicitly, resolved the same way for the
-        # agent and operator component checkouts.
-        run: >-
-          AGENT_CHART_DIR=${{ github.workspace }}/inari-agent/charts/inari-agent
-          OPERATOR_CHART_DIR=${{ github.workspace }}/inari-operator/charts/inari-operator
-          E2E_HANDOFF_PATH=/tmp/inari-e2e-handoff.json
-          KEEP_CLUSTER=true INARI_HA=${{ matrix.ha }}
-          bash scripts/e2e/golden-path.sh
-
-      - name: Run golden-path Go assertions (stack suite)
-        # Phase 1 of the shell→Go migration: the script above provisions,
-        # this suite asserts (per-phase failure identity in CI output).
-        # E2E_HA=1 on the HA leg unlocks the disruption subtests;
-        # SERVER_MIGRATIONS_DIR points at the inari-server checkout (HA(c)
-        # migration count).
+        # api-schema/UI steps below still have a stack to test against.
         # The stack suite is a nested Go module: go test must run from INSIDE
         # it (a ./scripts/e2e/stack/... pattern from the repo root fails with
-        # "directory prefix ... does not contain main module").
+        # "directory prefix ... does not contain main module"). -timeout
+        # exceeds the 10m go test default because bring-up + assertions
+        # take longer.
+        # Chart dirs are pinned explicitly, resolved the same way for the
+        # agent and operator component checkouts.
         working-directory: bundle/scripts/e2e/stack
         env:
           E2E_HA: ${{ matrix.ha && '1' || '0' }}
+          KEEP_CLUSTER: "true"
           E2E_HANDOFF_PATH: /tmp/inari-e2e-handoff.json
           SERVER_MIGRATIONS_DIR: ${{ github.workspace }}/inari-server/internal/db/migrations
         run: >-
-          go test -tags=e2e -count=1 -json ./...
+          AGENT_CHART_DIR=${{ github.workspace }}/inari-agent/charts/inari-agent
+          OPERATOR_CHART_DIR=${{ github.workspace }}/inari-operator/charts/inari-operator
+          go test -tags=e2e -count=1 -timeout ${{ matrix.ha && '50m' || '40m' }} -json ./...
           2>&1 | tee /tmp/golden-path-go.json
 
       - name: Run api-schema e2e against the live stack

@@ -20,7 +20,7 @@ export interface Persona {
 }
 
 export const PERSONAS: Record<string, Persona> = {
-  // Provisioned by golden-path.sh (platform-admins group, E2E Org creator).
+  // Provisioned by the golden-path stack suite (platform-admins group, E2E Org creator).
   devAdmin: {
     name: "dev-admin",
     username: process.env.E2E_USER || "dev-admin",

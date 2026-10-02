@@ -22,7 +22,7 @@
 // migration 0029_roles.sql):
 //
 //   user          password      role       purpose
-//   dev-admin     dev-admin     admin      EXISTS (golden-path.sh: platform-admins group,
+//   dev-admin     dev-admin     admin      EXISTS (stack suite seed.go: platform-admins group,
 //                                          E2E Org creator) — never touched here beyond
 //                                          being the API caller
 //   e2e-operator  e2e-operator  operator   Platform Engineer
@@ -249,7 +249,7 @@ async function ensureUser(at, { username, password }) {
     log(`KC user ${username} exists — skipped create`);
   }
   // KC 26.x: create alone can leave the account unverified / with required
-  // actions — force the final state (same lesson as golden-path.sh).
+  // actions — force the final state (same lesson as the golden-path seeding).
   // Never touches groups: personas must NOT join platform-admins.
   await kc("PUT", `/users/${id}`, {
     body: { emailVerified: true, requiredActions: [], enabled: true },

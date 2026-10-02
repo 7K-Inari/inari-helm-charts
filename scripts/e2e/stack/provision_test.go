@@ -4,7 +4,8 @@
 // e2eprovision tag is required): the assertion suite must never re-install
 // charts as a side effect of `go test -tags=e2e ./...`. golden-path.sh
 // (phase 2 of the shell→Go migration) invokes these explicitly with
-// `-tags "e2e e2eprovision"` between its own kind/KC-seeding stages.
+// `-tags "e2e e2eprovision"`; phase 3 provisions in-process from
+// TestGoldenPath itself and these entries remain for targeted reruns.
 package stack_test
 
 import (

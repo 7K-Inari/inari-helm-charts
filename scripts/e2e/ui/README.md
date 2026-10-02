@@ -52,7 +52,7 @@ the project default (60s) can't kill the poll.
 
 ## Running locally
 
-Requires a running golden-path stack (`KEEP_CLUSTER=true bash scripts/e2e/golden-path.sh`).
+Requires a running golden-path stack (`cd scripts/e2e/stack && KEEP_CLUSTER=true go test -tags=e2e -count=1 -timeout 40m ./...`).
 
 ```sh
 kubectl -n inari port-forward svc/inari-console 18080:80 &
@@ -84,7 +84,7 @@ cluster). One per ADR-0013 built-in role, plus the role-less member:
 
 | User | Password | Role | Purpose | Mutation policy |
 |---|---|---|---|---|
-| `dev-admin` | `dev-admin` | `admin` (platform-admins, E2E Org creator) | default `chromium` project identity; seeded by `golden-path.sh` | never touched by specs |
+| `dev-admin` | `dev-admin` | `admin` (platform-admins, E2E Org creator) | default `chromium` project identity; seeded by the golden-path stack suite (`suite/seed.go`) | never touched by specs |
 | `e2e-operator` | `e2e-operator` | `operator` (Platform Engineer) | operator-scope RBAC coverage | **specs must never change the assignment** |
 | `e2e-editor` | `e2e-editor` | `editor` (Developer) | developer-scope RBAC coverage | **specs must never change the assignment** |
 | `e2e-viewer` | `e2e-viewer` | `viewer` | read-only RBAC surface | **specs must never change the assignment** |

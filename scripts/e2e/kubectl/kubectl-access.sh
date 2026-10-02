@@ -14,7 +14,7 @@
 # The scenario is control-plane-only by design: etcd + kube-apiserver +
 # Keycloak as plain docker containers (no kubelet/containerd nesting), which
 # is everything the authn/authz chain needs and works on hosts where kind/
-# k3s cannot run. golden-path.sh remains the full-stack kind gate. Keycloak
+# k3s cannot run. The stack Go suite (scripts/e2e/stack) remains the full-stack kind gate. Keycloak
 # provisioning here mirrors tenancy.KubectlClientSpec (hub-side auto-
 # provisioning is covered by unit + integration tests, EnsureKubectlClient);
 # org-acme-kubectl gets directAccessGrantsEnabled=true as an e2e-only
