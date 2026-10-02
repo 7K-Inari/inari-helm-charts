@@ -10,16 +10,16 @@
 package suite
 
 import (
-	"flag"
 	"testing"
+
+	"7k-inari/inari-release-bundle/scripts/e2e/stack/internal/quarflag"
 )
 
-// includeQuarantined is registered on go test's flag set; the gate simply
-// omits it (default false → skip). Nightly:
-//
-//	go test -tags=e2e ... -args -include-quarantined
-var includeQuarantined = flag.Bool("include-quarantined", false,
-	"run tests quarantined for flakiness (nightly only; the release gate never sets this)")
+// The flag itself lives in internal/quarflag (registered on go test's flag
+// set): `-args -include-quarantined` is passed to EVERY test binary matched
+// by `go test ./...`, so binaries that neither import suite nor define the
+// flag (internal/kc, internal/poll) would die with "flag provided but not
+// defined". quarflag's tiny footprint lets those packages blank-import it.
 
 // Quarantined marks a flaky test/subtest: it skips unless the suite runs
 // with -include-quarantined. Call it as the first statement of the
@@ -31,7 +31,7 @@ var includeQuarantined = flag.Bool("include-quarantined", false,
 // nightly for ~2 weeks (same policy as the Playwright `@quarantine` tag).
 func Quarantined(t testing.TB, reason string) {
 	t.Helper()
-	if !*includeQuarantined {
+	if !*quarflag.IncludeQuarantined {
 		t.Skipf("quarantined: %s (pass -args -include-quarantined to run)", reason)
 	}
 }
