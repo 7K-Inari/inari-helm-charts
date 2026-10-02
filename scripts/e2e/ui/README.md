@@ -13,7 +13,7 @@ scripts/e2e/ui/
 ├── fixtures/
 │   ├── auth.ts                 # persona registry (5 personas) + KC two-step login helper
 │   ├── auth.setup.ts           # setup project: saves .auth/<persona>.json for every persona
-│   └── org.ts                  # unique org-name factory: e2e-<runId>-<seq>
+│   └── org.ts                  # unique-name factories: e2e-<runId>-<seq>[-<kind>]
 ├── seed/
 │   ├── seed-personas.mjs       # IDEMPOTENT persona seed (KC users + org join + role memberships
 │   │                           #   via the inari-server API + inari-ui redirect whitelist)
@@ -21,15 +21,26 @@ scripts/e2e/ui/
 ├── helpers/
 │   ├── env.ts                  # env contract (UI_BASE, KC_HOST, KC_URL, TENANT_NAME, ...)
 │   ├── poll.ts                 # poll(fn, { timeout, interval }) — see the polling RULE below
-│   └── api.ts                  # thin inari-server REST client (direct-grant token; reads only)
+│   └── api.ts                  # thin inari-server REST client (direct-grant token; reads +
+│   │                           #   DELETE for spec-owned cleanup only)
 ├── pages/
 │   ├── login.page.ts           # KC 26 two-step form (username → submit → password)
 │   ├── app-shell.page.ts       # boot gate, tenant cards, sidebar nav, "Loading…" waits
 │   └── access/                 # Access section + Members / Teams & Roles / Roles / Identity tabs
 └── specs/
-    └── smoke/
-        └── access-tabs.spec.ts # @p0 @smoke — the four RBAC tabs render their markers
+    ├── smoke/
+    │   └── access-tabs.spec.ts # @p0 @smoke — the four RBAC tabs render their markers
+    └── rbac/
+        └── role-lifecycle.spec.ts # @p0 @rbac — custom role CRUD, team→role mapping,
+                                   #   propagation to e2e-member's /me/permissions,
+                                   #   delete-in-use 409, cleanup
 ```
+
+The role-lifecycle spec's propagation step polls `GET /me/permissions` with
+`e2e-member`'s token for up to **120s** (5s interval) — that budget covers
+the OrgTeamSync interval plus the `/me/permissions` cache TTL and dominates
+the spec's ~90s expected runtime; the describe sets a 180s test timeout so
+the project default (60s) can't kill the poll.
 
 ## Running locally
 

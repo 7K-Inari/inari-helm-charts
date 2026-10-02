@@ -19,3 +19,6 @@ export const API_BASE = process.env.API_BASE || UI_BASE;
 
 /** Tenant card display name the smoke spec clicks. */
 export const TENANT_NAME = process.env.TENANT_NAME || "E2E Org";
+
+/** Tenant slug used in API paths (same env name/default as seed-personas.mjs). */
+export const TENANT_SLUG = process.env.TENANT || "e2e-org";
