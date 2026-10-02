@@ -32,10 +32,18 @@ scripts/e2e/ui/
 ├── pages/
 │   ├── login.page.ts           # KC 26 two-step form (username → submit → password)
 │   ├── app-shell.page.ts       # boot gate, tenant cards, sidebar nav, "Loading…" waits
-│   └── access/                 # Access section + Members / Teams & Roles / Roles / Identity tabs
+│   ├── access/                 # Access section + Members / Teams & Roles / Roles / Identity tabs
+│   └── settings/               # Settings inner nav + Org profile / Git config sub-pages
 └── specs/
     ├── smoke/
     │   └── access-tabs.spec.ts # @p0 @smoke — the four RBAC tabs render their markers
+    ├── settings/
+    │   ├── org-profile.spec.ts # @p1 @settings — display-name write path: save → reload →
+    │   │                       #   persisted → audit event via the API; restores the shared
+    │   │                       #   org's original name at the end (spec independence)
+    │   └── git-config.spec.ts  # @p1 @settings — state-repo write path through the local git
+    │                           #   provider (INARI_GIT_PROVIDER=local, hostPath root from
+    │                           #   golden-path.sh); restores the original config at the end
     └── rbac/
         ├── role-lifecycle.spec.ts # @p0 @rbac — custom role CRUD, team→role mapping,
         │                          #   propagation to e2e-member's /me/permissions,
