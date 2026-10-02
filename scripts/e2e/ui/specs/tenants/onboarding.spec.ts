@@ -8,15 +8,11 @@
 // then re-submits the same slug and asserts the server-side 409 surfaces as
 // the field-level slug error (no silent failure).
 //
-// LEFTOVER ORG — INTENTIONAL: this spec does NOT delete the org it creates.
-// P1-5 (tenant switching) needs a second org to switch between and discovers
-// this one by name convention (see below). CI runs on a fresh kind cluster
-// per workflow run, so leftovers are harmless.
-//
-// P1-5 discovery convention: the slug matches `e2e-<runId>-*-onb`
-// (uniqueName("onb") from fixtures/org.ts) and the display name is
-// `E2E <slug>`; resolve it via GET /api/v1/tenants filtering on the
-// "-onb" suffix (never hard-code the seq).
+// LEFTOVER ORG — INTENTIONAL: this spec does NOT delete the org it creates
+// (DELETE /api/v1/tenants/{org} is approval-gated and asynchronous, so there
+// is no clean synchronous delete). P1-5 (switching.spec.ts) creates its own
+// org and does NOT depend on this one. CI runs on a fresh kind cluster per
+// workflow run, so leftovers are harmless.
 //
 // Onboarding is async end to end — the Keycloak organization claim only
 // lists the new org after a forced token refresh, and OrgTeamSync provisions

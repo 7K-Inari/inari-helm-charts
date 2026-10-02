@@ -60,16 +60,21 @@ scripts/e2e/ui/
                                        #   bundle, negative direct-URL nav, bundle regression
                                        #   guard (API)
     └── tenants/
-        └── onboarding.spec.ts    # @p1 @tenants — org creation through the console UI,
-                                  #   tenant landing, Access tabs in the fresh org,
-                                  #   API metadata assertion, duplicate-slug 409 (P1-4)
+        ├── onboarding.spec.ts    # @p1 @tenants — org creation through the console UI,
+        │                         #   tenant landing, Access tabs in the fresh org,
+        │                         #   API metadata assertion, duplicate-slug 409 (P1-4)
+        └── switching.spec.ts     # @p1 @tenants — tenant switching via the header
+                                  #   switcher: e2e-org ↔ API-created org, per-context
+                                  #   data scoping (Members, Settings slug), switcher
+                                  #   indicator, reload persistence (P1-5)
 ```
 
-The onboarding spec **intentionally does not delete** the org it creates:
-P1-5 (tenant switching) discovers it by name convention — slug
-`e2e-<runId>-*-onb` (the `uniqueName("onb")` suffix), display name
-`E2E <slug>` — via `GET /api/v1/tenants`. CI runs on a fresh cluster per
-workflow run, so the leftover is harmless.
+Both tenant specs **intentionally do not delete** the orgs they create
+(DELETE `/api/v1/tenants/{org}` is approval-gated and asynchronous — there
+is no clean synchronous delete). Each spec creates its own org
+(`uniqueName("onb")` / `uniqueName("sw")`); the switching spec is
+self-contained and never depends on the onboarding spec's leftovers. CI
+runs on a fresh cluster per workflow run, so leftovers are harmless.
 
 The role-lifecycle spec's propagation step polls `GET /me/permissions` with
 `e2e-member`'s token for up to **120s** (5s interval) — that budget covers
