@@ -18,6 +18,11 @@ permissions:
   # ArgoCD pulls the inari-* OCI charts from ghcr.io during bootstrap.
   packages: read
 
+concurrency:
+  group: upgrade-${{ github.ref }}
+  # Superseded PR pushes kill in-flight runs; main runs never cancel.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   umbrella-to-gitops:
     runs-on: ubuntu-latest

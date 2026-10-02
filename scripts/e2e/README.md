@@ -2,7 +2,10 @@
 
 Canonical home of the Inari e2e suites (relocated from the inari-server
 repo's `e2e/` directory). `.github/workflows/release-e2e.yaml` is the CI gate
-that runs them. Suites are organized by surface (per the approved e2e
+that runs them. Docs/markdown-only changes pushed to a Release PR
+intentionally skip the e2e jobs (the workflow's `gate` job detects them and
+reports success) — e2e "not running" on such pushes is expected, not a CI
+outage. Suites are organized by surface (per the approved e2e
 architecture plan §1, "Unified testing folder structure"):
 
 ```
