@@ -31,8 +31,10 @@ scripts/e2e/ui/
 │   │                           #   negative-path assertions — see rule 5 below)
 ├── pages/
 │   ├── login.page.ts           # KC 26 two-step form (username → submit → password)
-│   ├── app-shell.page.ts       # boot gate, tenant cards, sidebar nav, "Loading…" waits
-│   └── access/                 # Access section + Members / Teams & Roles / Roles / Identity tabs
+│   ├── app-shell.page.ts       # boot gate, tenant cards, sidebar nav, tenant switcher,
+│   │                           #   "Loading…" waits
+│   ├── access/                 # Access section + Members / Teams & Roles / Roles / Identity tabs
+│   └── organizations/          # create-organization form (ids from inari-ui)
 └── specs/
     ├── smoke/
     │   └── access-tabs.spec.ts # @p0 @smoke — the four RBAC tabs render their markers
@@ -42,7 +44,17 @@ scripts/e2e/ui/
         │                          #   delete-in-use 409, cleanup
         └── builtin-protection.spec.ts # @p0 @rbac — built-in role rename/delete 409s (UI + API)
                                        #   and the tenant.admin last-admin guardrail (P0-3/P0-4)
+    └── tenants/
+        └── onboarding.spec.ts    # @p1 @tenants — org creation through the console UI,
+                                  #   tenant landing, Access tabs in the fresh org,
+                                  #   API metadata assertion, duplicate-slug 409 (P1-4)
 ```
+
+The onboarding spec **intentionally does not delete** the org it creates:
+P1-5 (tenant switching) discovers it by name convention — slug
+`e2e-<runId>-*-onb` (the `uniqueName("onb")` suffix), display name
+`E2E <slug>` — via `GET /api/v1/tenants`. CI runs on a fresh cluster per
+workflow run, so the leftover is harmless.
 
 The role-lifecycle spec's propagation step polls `GET /me/permissions` with
 `e2e-member`'s token for up to **120s** (5s interval) — that budget covers
