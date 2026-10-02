@@ -5,7 +5,7 @@
 // the only coverage that exercises the SPA's OIDC flow, tenant switcher, and
 // the RBAC role-engine screens (Members, Teams & Roles, Roles, Identity)
 // against the deployed stack. Run by the release-e2e golden-path job after
-// the api-schema step, behind scripts/e2e/ui-proxy.mjs (single-origin shim).
+// the api-schema step, behind scripts/e2e/lib/ui-proxy.mjs (single-origin shim).
 //
 // Env:
 //   UI_BASE       console entry URL (through ui-proxy; default http://127.0.0.1:8080)
