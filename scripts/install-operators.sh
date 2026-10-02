@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# LEGACY: imperative operator install used only by the umbrella-to-gitops
-# migration test (.github/workflows/upgrade.yaml). New installs get the
+# Imperative operator install used by the e2e golden-path suite
+# (scripts/e2e/stack/suite/provide.go). New production installs get the
 # operators from ArgoCD Applications (gitops/operators/).
 #
-# Installs the cluster operators the old inari-platform umbrella assumed:
+# Installs the cluster operators the inari-platform chart assumes:
 # CloudNativePG (CNPG) and the Keycloak operator, incl. their CRDs.
 # The chart never installs operators itself — this script is the day-0
-# prerequisite step for clusters that don't have them yet. Idempotent.
+# prerequisite step for test clusters that don't have them yet. Idempotent.
 set -euo pipefail
 
 # The chart requires CNPG >= 1.25 (declarative managed roles + Database CRs).

@@ -50,8 +50,7 @@ if [[ -n "${GITOPS_TARGET_REVISION:-}" ]]; then
 fi
 
 # Wait for the core stack. inari-server / inari-console are optional until
-# their charts are published by the component repos (the old umbrella
-# shipped them as disabled stubs).
+# their charts are published by the component repos.
 CORE_APPS=(cnpg keycloak-operator inari-operator-crds platform-config nats openfga inari-operator)
 OPTIONAL_APPS=(inari-server inari-console)
 

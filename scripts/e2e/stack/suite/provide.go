@@ -123,9 +123,8 @@ func Provision(t *testing.T) *Env {
 		t.Fatalf("kind load images: %v", err)
 	}
 
-	// install-operators.sh STAYS shell — it is a chart asset used outside
-	// the tests (umbrella-to-gitops migration test); the provisioner execs
-	// it rather than absorbing it.
+	// install-operators.sh STAYS shell — it is a test asset shared with
+	// local e2e runs; the provisioner execs it rather than absorbing it.
 	logf("installing prerequisite operators (CNPG + Keycloak — the charts never install operators)")
 	if _, err := kube.Run("bash", filepath.Join(c.RepoRoot, "scripts/install-operators.sh")); err != nil {
 		t.Fatalf("install-operators.sh: %v", err)
