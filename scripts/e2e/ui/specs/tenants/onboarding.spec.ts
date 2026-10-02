@@ -136,16 +136,17 @@ test.describe.serial("tenant onboarding via the console UI @p1 @tenants", () => 
       async () => {
         const body = await api.get<ListedTenants>("/api/v1/tenants");
         const match = (body.tenants ?? []).find((t) => t.slug === SLUG);
-        expect(match, `org ${SLUG} in /api/v1/tenants`).toBeDefined();
+        // keycloakOrgId is only set once the async KC organization
+        // provisioning has run — requiring it here (not just asserting after
+        // the poll) is what actually waits out that propagation.
+        expect(match?.keycloakOrgId, `org ${SLUG} with keycloakOrgId`).toBeTruthy();
         return match!;
       },
       { timeout: 60_000, interval: 5_000, message: `org ${SLUG} listed via API` },
     );
     expect(org.displayName).toBe(DISPLAY_NAME);
     expect(org.status).toBeTruthy();
-    // keycloakOrgId is only set once the KC organization resource exists —
-    // polling above gives the async provisioning time to fill it in.
-    expect(org.keycloakOrgId).toBeTruthy();
+    expect(org.createdAt).toBeTruthy();
     expect(org.createdAt).toBeTruthy();
   });
 
