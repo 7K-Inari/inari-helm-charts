@@ -333,12 +333,13 @@ jobs:
           E2E_HANDOFF_PATH: /tmp/inari-e2e-handoff.json
           SERVER_MIGRATIONS_DIR: ${{ github.workspace }}/inari-server/internal/db/migrations
           QUAR_ARGS: ${{ inputs.mode == 'nightly' && '-args -include-quarantined' || '' }}
-        run: >-
+        run: |
+          set -euo pipefail
           AGENT_CHART_DIR=${{ github.workspace }}/inari-agent/charts/inari-agent
           OPERATOR_CHART_DIR=${{ github.workspace }}/inari-operator/charts/inari-operator
-          go test -tags=e2e -count=1 -timeout ${{ inputs.ha && '50m' || '40m' }} -json ./...
-          $QUAR_ARGS
-          2>&1 | tee /tmp/golden-path-go.json
+          go test -tags=e2e -count=1 -timeout ${{ inputs.ha && '50m' || '40m' }} -json ./... \
+            $QUAR_ARGS \
+            2>&1 | tee /tmp/golden-path-go.json
 
       - name: Run api-schema e2e against the live stack
         # Gate-only: the driver imports inari-server modules and reads
