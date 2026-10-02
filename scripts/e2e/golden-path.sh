@@ -222,7 +222,7 @@ WORKER_PIDS+=($!); WORKER_NAMES+=("keycloak")
 # without it — the outbox relay publishes to the INARI_OUTBOX stream and
 # every handler is delivered via its own durable consumer group. It is
 # provisioned HA (3-node, R=3 streams) — part of the 99.9% availability
-# initiative. e2e/nats-values.yaml mirrors the production posture:
+# initiative. e2e/stack/testdata/nats-values.yaml mirrors the production posture:
 #   - 3-node cluster (JetStream meta group quorum), one fileStore PVC per pod
 #   - R=3 streams (replicas=3) so any single node loss keeps the stream live
 #   - advised limits: size fileStore per retention budget and set explicit
@@ -232,7 +232,7 @@ WORKER_PIDS+=($!); WORKER_NAMES+=("keycloak")
 (
   helm upgrade --install nats nats/nats --version 1.3.2 \
     --namespace "$NAMESPACE" \
-    -f "$(dirname "$0")/nats-values.yaml" \
+    -f "$(dirname "$0")/stack/testdata/nats-values.yaml" \
     --wait --timeout 8m || exit 1
   # Belt-and-braces on top of helm --wait (the StatefulSet readiness probe
   # /healthz?js-server-only=true already gates on meta-group currency): assert

@@ -315,7 +315,7 @@ jobs:
         working-directory: inari-server
         run: |
           set -euo pipefail
-          cp "${{ github.workspace }}/bundle/scripts/e2e/api_schema_e2e_test.go" e2e/
+          cp "${{ github.workspace }}/bundle/scripts/e2e/api/api_schema_e2e_test.go" e2e/
           make export-openapi
           kubectl -n inari port-forward svc/inari-server 18090:8080 >/dev/null 2>&1 &
           kubectl -n inari port-forward svc/keycloak-service 18091:8080 >/dev/null 2>&1 &
@@ -332,7 +332,7 @@ jobs:
         #      re-set to the port-forward (tokens keep the converged
         #      service-DNS issuer, which the server accepts).
         #   2. There is no gateway in kind and the server sends no CORS
-        #      headers, so ui-proxy.mjs merges console + API onto one origin
+        #      headers, so lib/ui-proxy.mjs merges console + API onto one origin
         #      (the production topology) for the browser.
         working-directory: bundle
         run: |
@@ -364,7 +364,7 @@ jobs:
             --reuse-values --set keycloakUrl="$KC"
           kubectl -n inari rollout status deployment/inari-console --timeout=180s
 
-          node scripts/e2e/ui-proxy.mjs &
+          node scripts/e2e/lib/ui-proxy.mjs &
           PROXY_PID=$!
           trap 'kill $PROXY_PID 2>/dev/null || true' EXIT
           npx -y playwright@1.55.0 install --with-deps chromium
