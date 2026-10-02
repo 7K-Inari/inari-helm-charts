@@ -13,3 +13,9 @@ export function uniqueOrgName(): string {
   seq += 1;
   return `e2e-${runId}-${seq}`;
 }
+
+/** Unique DNS-1123-safe object name with a semantic suffix (roles, teams). */
+export function uniqueName(kind: string): string {
+  seq += 1;
+  return `e2e-${runId}-${seq}-${kind}`;
+}
