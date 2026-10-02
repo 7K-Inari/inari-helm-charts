@@ -176,7 +176,18 @@ func waitCNPG(ns string) error {
 
 // helmRepoSetup registers every helm repo SERIALLY (shared local repo cache
 // races under concurrency — the reason the script did repo setup up front).
+// HELM_REPOS_SEEDED=1 skips add/update entirely: CI restores ~/.config/helm
+// + ~/.cache/helm from the helm cache, and add/update would re-fetch every
+// index over the network anyway, making the cache dead weight. With the
+// restored config+index, helm resolves pinned chart versions offline (the
+// small chart tgz still downloads). A stale index missing a newly pinned
+// version fails loudly — the correct signal to regenerate images.txt (the
+// cache key input).
 func helmRepoSetup() error {
+	if os.Getenv("HELM_REPOS_SEEDED") == "1" {
+		logf("HELM_REPOS_SEEDED=1 — helm repos restored from cache, skipping repo add/update")
+		return nil
+	}
 	for _, r := range [][2]string{
 		{"openfga", "https://openfga.github.io/helm-charts"},
 		{"nats", "https://nats-io.github.io/k8s/helm/charts/"},
@@ -412,7 +423,12 @@ func installServer(c *ProvisionConfig) error {
 			// e2e-only: the redis subchart (bitnami 28.2.4) defaults to the
 			// MUTABLE bitnami/redis:latest tag — unpinnable and uncacheable.
 			// Pin the frozen bitnamilegacy repo's newest tag instead
-			// (recorded in testdata/images.txt).
+			// (recorded in testdata/images.txt). registry=docker.io is
+			// load-bearing: the subchart defaults to registry-1.docker.io,
+			// which containerd treats as a DIFFERENT image identity than the
+			// preloaded docker.io/bitnamilegacy/redis:8.2.1 — the preload
+			// would be ignored and the node would re-pull every run.
+			"--set", "redis.image.registry=docker.io",
 			"--set", "redis.image.repository=bitnamilegacy/redis",
 			"--set", "redis.image.tag=8.2.1")
 	}

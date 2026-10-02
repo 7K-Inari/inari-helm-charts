@@ -23,8 +23,14 @@ if kubectl get crd clusters.postgresql.cnpg.io >/dev/null 2>&1; then
 else
   log "installing CNPG operator $CNPG_VERSION"
   command -v helm >/dev/null || { echo "helm required for the CNPG operator" >&2; exit 1; }
-  helm repo add cnpg https://cloudnative-pg.github.io/charts >/dev/null
-  helm repo update cnpg >/dev/null
+  if [ "${HELM_REPOS_SEEDED:-}" = "1" ]; then
+    # CI helm cache hit: repo config + index restored — add/update would
+    # re-fetch the index over the network and defeat the cache.
+    log "HELM_REPOS_SEEDED=1 — skipping cnpg repo add/update"
+  else
+    helm repo add cnpg https://cloudnative-pg.github.io/charts >/dev/null
+    helm repo update cnpg >/dev/null
+  fi
   helm upgrade --install cnpg cnpg/cloudnative-pg \
     --version "$CNPG_VERSION" \
     --namespace cnpg-system --create-namespace --wait --timeout 5m

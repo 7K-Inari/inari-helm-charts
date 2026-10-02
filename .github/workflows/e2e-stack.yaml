@@ -256,7 +256,14 @@ jobs:
         run: |
           set -euo pipefail
           MANIFEST=bundle/scripts/e2e/stack/testdata/images.txt
-          NODE_IMAGE=$(grep '^kindest/node' "$MANIFEST")
+          # Strip the digest for kind create: `docker load` does NOT restore
+          # RepoDigests, so `docker inspect repo:tag@digest` fails on the
+          # loaded image and kind's inspect-then-pull would re-fetch the
+          # manifest from Docker Hub on every cache hit. The plain tag
+          # inspects fine after load; its content was already pinned by the
+          # digest-pinned pull on the miss path. The manifest keeps the
+          # digest — it is the cache-key input and the pull pin.
+          NODE_IMAGE=$(grep '^kindest/node' "$MANIFEST" | cut -d@ -f1)
           t0=$(date +%s)
           docker load -i /tmp/e2e-images/images.tar
           echo "[timing] docker load: $(( $(date +%s) - t0 ))s"
@@ -281,13 +288,22 @@ jobs:
           echo "[timing] kind load image-archive: $(( $(date +%s) - t0 ))s"
 
       - name: Cache helm repo index + charts
-        # Repo adds/index downloads (~30-60s across 6 repos). Keyed on the
-        # image manifest because it records the chart pins; a chart bump
-        # changes the manifest -> fresh index. Soft restore-key: a stale
-        # index is fine, pinned --version fetches stay correct.
+        # Repo adds/index downloads (~30-60s across 6 repos). BOTH dirs are
+        # needed: ~/.config/helm holds repositories.yaml, ~/.cache/helm the
+        # index files. On a hit the suite + install-operators.sh run with
+        # HELM_REPOS_SEEDED=1 and SKIP repo add/update — without that skip
+        # the cache is dead weight, because add/update always re-fetch every
+        # index over the network. Keyed on the image manifest because it
+        # records the chart pins; a chart bump changes the manifest -> fresh
+        # index. Soft restore-key: a stale index missing a newly pinned
+        # version fails loudly (version not found) — the correct signal to
+        # regenerate images.txt.
+        id: helmcache
         uses: actions/cache@v4
         with:
-          path: ~/.cache/helm
+          path: |
+            ~/.cache/helm
+            ~/.config/helm
           key: helm-${{ runner.os }}-${{ hashFiles('bundle/scripts/e2e/stack/testdata/images.txt') }}
           restore-keys: helm-${{ runner.os }}-
 
@@ -310,6 +326,10 @@ jobs:
           # step above) instead of recreating an empty one.
           E2E_ADOPT_CLUSTER: '1'
           GIT_HOST_DIR: /tmp/inari-e2e-git
+          # Helm cache hit => repo config + index were restored; the suite
+          # and install-operators.sh skip repo add/update (they would
+          # re-fetch every index and defeat the cache).
+          HELM_REPOS_SEEDED: ${{ steps.helmcache.outputs.cache-hit == 'true' && '1' || '0' }}
           E2E_HANDOFF_PATH: /tmp/inari-e2e-handoff.json
           SERVER_MIGRATIONS_DIR: ${{ github.workspace }}/inari-server/internal/db/migrations
           QUAR_ARGS: ${{ inputs.mode == 'nightly' && '-args -include-quarantined' || '' }}
