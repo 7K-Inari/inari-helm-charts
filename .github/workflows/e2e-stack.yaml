@@ -1,0 +1,369 @@
+name: e2e-stack
+
+# Reusable full-stack e2e leg (migration phase 4 of the golden-path design,
+# plan §3 phase 4 + §6.4/§6.5): the ONE shared definition of stack bring-up,
+# follow-on suites, artifacts and teardown. Callers:
+#   - release-e2e.yaml job golden-path (mode=gate, HA matrix) — Release-PR
+#     gate; quarantined tests (Playwright @quarantine AND Go
+#     -include-quarantined) NEVER run here.
+#   - e2e-nightly.yaml job nightly-stack (mode=nightly, non-HA) — full
+#     Playwright suite incl. @quarantine (continue-on-error) and the Go
+#     stack suite with -args -include-quarantined; artifacts 14 days.
+#
+# A workflow_call job is job-level: callers cannot add steps before/after,
+# and the api-schema/UI suites must share the runner with the kind cluster —
+# so this workflow owns the entire leg and selects behavior via `mode`.
+#
+# KEEP_CLUSTER: the Go suite always runs with KEEP_CLUSTER=<keep-cluster>
+# (default true) so the api-schema/UI/diagnostics steps have a live stack,
+# and this workflow owns teardown as a final if:always() step. The cluster
+# never outlives its runner — there is no cross-job handoff; a hard-killed
+# runner is reclaimed by GitHub wholesale (plan §7 risk 10).
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: >-
+          gate: api-schema + Playwright @p0 minus @quarantine, gating.
+          nightly: full Playwright @p0|@p1|@p2 incl. @quarantine
+          (continue-on-error) + Go suite with -args -include-quarantined.
+        required: true
+        type: string
+      ha:
+        description: HA leg — E2E_HA=1, longer timeouts, HA diagnostics.
+        required: false
+        type: boolean
+        default: false
+      bundle-ref:
+        description: Ref of this repo (charts/scripts under test) to check out.
+        required: true
+        type: string
+      server-src-ref:
+        description: inari-server git ref for the Go suites + migrations dir.
+        required: true
+        type: string
+      image-tag:
+        description: Published ghcr.io image tag (UNPREFIXED, e.g. 1.8.0).
+        required: true
+        type: string
+      build-from-ref:
+        description: >-
+          inari-server ref to build the e2e image from instead of pulling
+          the published one (repair path). Sentinel "none" = pull published.
+        required: false
+        type: string
+        default: "none"
+      cosign-verify:
+        description: >-
+          Verify the published image with cosign. False only for unsigned
+          edge-image repair runs.
+        required: false
+        type: boolean
+        default: true
+      branch-hint:
+        description: >-
+          Branch name matched against inari-agent/inari-operator for the
+          component checkouts (fallback main). The reusable workflow cannot
+          see the caller's github.head_ref, so callers pass it explicitly.
+        required: false
+        type: string
+        default: main
+      keep-cluster:
+        description: >-
+          KEEP_CLUSTER value for the Go suite. Teardown is always owned by
+          this workflow's final step; false only shortens the window.
+        required: false
+        type: boolean
+        default: true
+      retention-days:
+        description: Artifact retention (gate 7, nightly 14).
+        required: false
+        type: number
+        default: 7
+
+permissions:
+  contents: read
+
+env:
+  # Artifact name suffix: gate keeps the historical ui-e2e-ha-<bool> /
+  # golden-path-go-ha-<bool> names; nightly uses its own.
+  LEG: ${{ inputs.mode == 'nightly' && 'nightly' || format('ha-{0}', inputs.ha) }}
+
+jobs:
+  stack:
+    name: e2e-stack (${{ inputs.mode }}, E2E_HA=${{ inputs.ha && '1' || '0' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.ha && 60 || 45 }}
+    env:
+      IMAGE_REF: ghcr.io/7k-inari/inari-server:${{ inputs.image-tag }}
+    steps:
+      - name: Checkout inari-server (Go suites + migrations dir)
+        uses: actions/checkout@v4
+        with:
+          repository: 7K-Inari/inari-server
+          ref: ${{ inputs.server-src-ref }}
+          path: inari-server
+
+      - name: Checkout bundle (charts under test)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.bundle-ref }}
+          path: bundle
+
+      - name: Resolve matching inari-agent ref
+        id: agent
+        env:
+          BRANCH: ${{ inputs.branch-hint }}
+        run: |
+          if git ls-remote --exit-code https://github.com/7K-Inari/inari-agent.git \
+            "refs/heads/$BRANCH" >/dev/null 2>&1; then
+            echo "ref=$BRANCH" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout inari-agent
+        uses: actions/checkout@v4
+        with:
+          repository: 7K-Inari/inari-agent
+          ref: ${{ steps.agent.outputs.ref }}
+          path: inari-agent
+
+      - name: Resolve matching inari-operator ref
+        id: operator
+        env:
+          BRANCH: ${{ inputs.branch-hint }}
+        run: |
+          if git ls-remote --exit-code https://github.com/7K-Inari/inari-operator.git \
+            "refs/heads/$BRANCH" >/dev/null 2>&1; then
+            echo "ref=$BRANCH" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout inari-operator (operator + console smoke charts)
+        uses: actions/checkout@v4
+        with:
+          repository: 7K-Inari/inari-operator
+          ref: ${{ steps.operator.outputs.ref }}
+          path: inari-operator
+
+      - name: Set up Go
+        # The stack suite is what runs here — pin the toolchain to ITS
+        # module (the nested module under scripts/e2e/stack).
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: bundle/scripts/e2e/stack/go.mod
+
+      - name: Install cosign
+        if: inputs.build-from-ref == 'none' && inputs.cosign-verify
+        uses: sigstore/cosign-installer@v3
+
+      - name: Pull and verify published server image
+        # Prefer the cosign-signed artifact that actually ships over a
+        # rebuild. The pulled image is re-tagged to `inari/server:e2e` —
+        # the tag the Go stack provisioner loads into kind — so no rebuild
+        # happens. cosign verification is skipped only for unsigned
+        # edge-image repair runs (cosign-verify=false).
+        if: inputs.build-from-ref == 'none'
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.cosign-verify }}" = "true" ]; then
+            cosign verify "$IMAGE_REF" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              --certificate-identity-regexp https://github.com/7K-Inari/inari-server/
+          else
+            echo "cosign-verify=false — skipping verification (unsigned edge image)"
+          fi
+          docker pull "$IMAGE_REF"
+          docker tag "$IMAGE_REF" inari/server:e2e
+
+      - name: Build server image from ref
+        # Repair path for unreleased combos.
+        if: inputs.build-from-ref != 'none'
+        working-directory: inari-server
+        run: |
+          git checkout "${{ inputs.build-from-ref }}"
+          docker build -f deploy/docker/Dockerfile -t inari/server:e2e .
+
+      - name: Build agent image
+        run: docker build -f inari-agent/Dockerfile -t inari/agent:e2e ./inari-agent
+
+      - name: Install kind
+        # The Go provisioner creates the cluster itself (it needs a custom
+        # extraMounts config for the git hostPath), so only the binary is
+        # installed here. One cluster name for both modes — per-runner
+        # isolation makes a nightly-specific name unnecessary.
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: inari-e2e
+          install_only: true
+
+      - name: Provision + assert golden path (Go stack suite)
+        # The stack suite provisions the whole stack in-process (kind
+        # cluster incl. the git hostPath mount, operators, every helm chart
+        # in dependency layers, KC seeding, tenant/cluster/agent), then runs
+        # the golden-path assertions (per-phase failure identity in CI
+        # output). E2E_HA=1 flips the helm replica values AND unlocks the
+        # disruption subtests. Quarantined Go tests (suite.Quarantined)
+        # skip unless -args -include-quarantined is passed — nightly mode
+        # ONLY; the gate never sets it (same rule as inari-server's flaky
+        # build tag). The stack suite is a nested Go module: go test must
+        # run from INSIDE it. -timeout exceeds the 10m go test default.
+        working-directory: bundle/scripts/e2e/stack
+        env:
+          E2E_HA: ${{ inputs.ha && '1' || '0' }}
+          KEEP_CLUSTER: ${{ inputs.keep-cluster }}
+          E2E_HANDOFF_PATH: /tmp/inari-e2e-handoff.json
+          SERVER_MIGRATIONS_DIR: ${{ github.workspace }}/inari-server/internal/db/migrations
+          QUAR_ARGS: ${{ inputs.mode == 'nightly' && '-args -include-quarantined' || '' }}
+        run: >-
+          AGENT_CHART_DIR=${{ github.workspace }}/inari-agent/charts/inari-agent
+          OPERATOR_CHART_DIR=${{ github.workspace }}/inari-operator/charts/inari-operator
+          go test -tags=e2e -count=1 -timeout ${{ inputs.ha && '50m' || '40m' }} -json ./...
+          $QUAR_ARGS
+          2>&1 | tee /tmp/golden-path-go.json
+
+      - name: Run api-schema e2e against the live stack
+        # Gate-only: the driver imports inari-server modules and reads
+        # dist/openapi.yaml (generated here — not committed at server tags).
+        if: inputs.mode == 'gate'
+        working-directory: inari-server
+        run: |
+          set -euo pipefail
+          cp "${{ github.workspace }}/bundle/scripts/e2e/api/api_schema_e2e_test.go" e2e/
+          make export-openapi
+          kubectl -n inari port-forward svc/inari-server 18090:8080 >/dev/null 2>&1 &
+          kubectl -n inari port-forward svc/keycloak-service 18091:8080 >/dev/null 2>&1 &
+          sleep 3 # port-forwards need a moment before accepting connections
+          E2E_BASE_URL=http://127.0.0.1:18090 \
+          E2E_KEYCLOAK_URL=http://127.0.0.1:18091 \
+          E2E_OPENAPI="${{ github.workspace }}/inari-server/dist/openapi.yaml" \
+          go test -tags=e2e ./e2e/ -run TestAPISchemaConformance -count=1 -v
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bundle/scripts/e2e/ui/package-lock.json') }}
+
+      - name: Run console UI e2e (Playwright)
+        # Gate: @p0 WITHOUT @quarantine (gating; a quarantined test never
+        # blocks a release). Nightly: the FULL suite @p0|@p1|@p2 INCLUDING
+        # @quarantine, continue-on-error — signal for the flake sweep, not
+        # a gate. Persona seeding + the inari-ui redirect whitelist live in
+        # scripts/e2e/ui/seed/seed-personas.mjs; lib/ui-proxy.mjs merges
+        # console + API onto one origin for the browser.
+        continue-on-error: ${{ inputs.mode == 'nightly' }}
+        working-directory: bundle
+        env:
+          GREP: ${{ inputs.mode == 'nightly' && '@p0|@p1|@p2' || '@p0' }}
+          GREP_INVERT: ${{ inputs.mode == 'nightly' && '' || '--grep-invert @quarantine' }}
+        run: |
+          set -euo pipefail
+          KC=http://127.0.0.1:18091
+
+          # Fresh port-forwards (a prior step's may have died).
+          pkill -f "kubectl -n inari port-forward" 2>/dev/null || true
+          kubectl -n inari port-forward svc/inari-console 18080:80 >/dev/null 2>&1 &
+          kubectl -n inari port-forward svc/inari-server 18090:8080 >/dev/null 2>&1 &
+          kubectl -n inari port-forward svc/keycloak-service 18091:8080 >/dev/null 2>&1 &
+          sleep 3
+
+          # Seed the e2e personas (idempotent) and whitelist the browser
+          # origin on the realm-imported inari-ui client. Fails the job here —
+          # before browser install — if the membership API is broken (P0).
+          node scripts/e2e/ui/seed/seed-personas.mjs
+
+          # Point the SPA's Keycloak URL at the browser-reachable forward.
+          helm upgrade inari-console charts/inari-console --namespace inari \
+            --reuse-values --set keycloakUrl="$KC"
+          kubectl -n inari rollout status deployment/inari-console --timeout=180s
+
+          node scripts/e2e/lib/ui-proxy.mjs &
+          PROXY_PID=$!
+          trap 'kill $PROXY_PID 2>/dev/null || true' EXIT
+          cd scripts/e2e/ui
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test --config playwright.config.ci.ts --grep "$GREP" $GREP_INVERT
+
+      - name: Report UI e2e flakes
+        # Post-process the Playwright JSON report: any test that passed
+        # only after a retry is a flake candidate. Never fails; writes
+        # test-results/flake-report.json (uploaded below) for the nightly
+        # quarantine sweep.
+        if: always()
+        working-directory: bundle/scripts/e2e/ui
+        run: node report-flakes.mjs
+
+      - name: Upload flake report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-e2e-flakes-${{ env.LEG }}
+          path: bundle/scripts/e2e/ui/test-results/flake-report.json
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.retention-days }}
+
+      - name: Upload UI e2e artifacts
+        # Gate: failure-only (PR #63 convention). Nightly: always — the
+        # full results feed the flake/quarantine triage.
+        if: failure() || inputs.mode == 'nightly'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-e2e-${{ env.LEG }}
+          path: |
+            bundle/scripts/e2e/ui/test-results/
+            bundle/scripts/e2e/ui/playwright-report/
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.retention-days }}
+          # Traces/videos/screenshots are already zip/mp4/png — skip gzip.
+          compression-level: 0
+
+      - name: Collect diagnostics bundle on failure
+        if: failure()
+        run: |
+          set +e
+          kubectl config use-context kind-inari-e2e || true
+          mkdir -p /tmp/e2e-diag
+          kubectl -n inari get pods -o wide > /tmp/e2e-diag/pods.txt 2>&1
+          kubectl -n inari get events --sort-by=.lastTimestamp > /tmp/e2e-diag/events.txt 2>&1
+          kubectl -n inari describe pods > /tmp/e2e-diag/describe-pods.txt 2>&1
+          kubectl -n inari logs -l app.kubernetes.io/name=inari-server --prefix --tail=500 \
+            > /tmp/e2e-diag/inari-server.log 2>&1
+          kubectl -n inari-system logs deployment/inari-agent --tail=500 > /tmp/e2e-diag/inari-agent.log 2>&1
+          kubectl -n inari logs deployment/inari-console --tail=100 > /tmp/e2e-diag/inari-console.log 2>&1
+          kubectl -n inari logs deployment/inari-operator --tail=100 > /tmp/e2e-diag/inari-operator.log 2>&1
+          cp /tmp/inari-e2e-handoff.json /tmp/e2e-diag/ 2>/dev/null
+          if [ "${{ inputs.ha }}" = "true" ]; then
+            kubectl -n inari get pdb,deployment inari-server -o wide > /tmp/e2e-diag/ha.txt 2>&1
+            PRIMARY=$(kubectl -n inari get cluster.postgresql.cnpg.io/postgresql \
+              -o jsonpath='{.status.currentPrimary}' 2>/dev/null)
+            if [ -n "$PRIMARY" ]; then
+              URI=$(kubectl -n inari get secret inari-db -o jsonpath='{.data.inari-uri}' | base64 -d)
+              kubectl -n inari exec "$PRIMARY" -c postgres -- \
+                psql "$URI" -c 'SELECT name, holder, expires_at FROM leader_leases' \
+                > /tmp/e2e-diag/leader-leases.txt 2>&1
+            fi
+          fi
+          # Keep the summary visible in the job log too.
+          cat /tmp/e2e-diag/pods.txt
+          tail -100 /tmp/e2e-diag/inari-server.log
+          tail -100 /tmp/e2e-diag/inari-agent.log
+          exit 0
+
+      - name: Upload Go test JSON + diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-path-go-${{ env.LEG }}
+          path: |
+            /tmp/golden-path-go.json
+            /tmp/e2e-diag/
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.retention-days }}
+
+      - name: Delete kind cluster
+        if: always()
+        run: kind delete cluster --name inari-e2e || true

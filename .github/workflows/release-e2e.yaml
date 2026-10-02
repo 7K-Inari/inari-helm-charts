@@ -11,18 +11,16 @@ name: release-e2e
   #   3. golden-path        — kind-based golden path (HA matrix preserved),
   #                           preferring the published cosign-signed image
   #                           ghcr.io/7k-inari/inari-server:vX.Y.Z over a
-  #                           rebuild. scripts/e2e/stack (Go, -tags=e2e)
-  #                           provisions the whole stack in-process (kind,
-  #                           operators, helm charts in dependency layers,
-  #                           KC seeding, tenant/cluster/agent) and asserts
-  #                           the golden path incl. HA disruption on the HA
-  #                           leg (phase 3 of the shell→Go migration —
-  #                           golden-path.sh is gone).
-#                           The inari-server checkout at the pinned tag is
-#                           still used for the Go test suites and the
-#                           api-schema e2e driver. The stack additionally
-#                           smoke-tests the inari-operator and inari-console
-#                           charts.
+  #                           rebuild. Delegated to the reusable
+  #                           e2e-stack.yaml (migration phase 4), which runs
+  #                           the Go stack suite (-tags=e2e: provisions the
+  #                           whole stack in-process AND asserts it), then
+  #                           the api-schema driver and the @p0 Playwright
+  #                           suite minus @quarantine. The inari-server
+  #                           checkout at the pinned tag is still used for
+  #                           the Go test suites and the api-schema e2e
+  #                           driver. The stack additionally smoke-tests the
+  #                           inari-operator and inari-console charts.
 #
 # Trigger: pull_request on release-please Release PRs only (branch prefix
 # `release-please--` or Chart.yaml/appVersion changes), plus
@@ -204,288 +202,24 @@ jobs:
   golden-path:
     needs: resolve
     # Two legs: the default single-replica fast gate, and the HA gate
-    # (E2E_HA=1). Mirrors inari-server's e2e.yaml timeouts.
+    # (E2E_HA=1). The whole leg (bring-up → api-schema → @p0 UI minus
+    # @quarantine → artifacts → teardown) is owned by the reusable
+    # e2e-stack.yaml (migration phase 4) — one shared bring-up definition
+    # with the nightly, no YAML duplication. The gate NEVER runs a
+    # quarantined test (UI @quarantine or Go -include-quarantined).
     strategy:
       fail-fast: false
       matrix:
         ha: [false, true]
     name: golden-path (E2E_HA=${{ matrix.ha && '1' || '0' }})
-    runs-on: ubuntu-latest
-    timeout-minutes: ${{ matrix.ha && 60 || 45 }}
-    env:
-      IMAGE_REF: ghcr.io/7k-inari/inari-server:${{ needs.resolve.outputs.image-tag }}
-    steps:
-      - name: Checkout inari-server (Go suites + migrations dir)
-        uses: actions/checkout@v4
-        with:
-          repository: 7K-Inari/inari-server
-          ref: ${{ needs.resolve.outputs.server-src-ref }}
-          path: inari-server
-
-      - name: Checkout bundle (charts under test)
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
-          path: bundle
-
-      - name: Resolve matching inari-agent ref
-        id: agent
-        env:
-          HEAD_REF: ${{ github.head_ref || github.ref_name }}
-        run: |
-          BRANCH="$HEAD_REF"
-          if git ls-remote --exit-code https://github.com/7K-Inari/inari-agent.git "refs/heads/$BRANCH" >/dev/null 2>&1; then
-            echo "ref=$BRANCH" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=main" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Checkout inari-agent
-        uses: actions/checkout@v4
-        with:
-          repository: 7K-Inari/inari-agent
-          ref: ${{ steps.agent.outputs.ref }}
-          path: inari-agent
-
-      - name: Resolve matching inari-operator ref
-        id: operator
-        env:
-          HEAD_REF: ${{ github.head_ref || github.ref_name }}
-        run: |
-          BRANCH="$HEAD_REF"
-          if git ls-remote --exit-code https://github.com/7K-Inari/inari-operator.git "refs/heads/$BRANCH" >/dev/null 2>&1; then
-            echo "ref=$BRANCH" >> "$GITHUB_OUTPUT"
-          else
-            echo "ref=main" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Checkout inari-operator (operator + console smoke charts)
-        uses: actions/checkout@v4
-        with:
-          repository: 7K-Inari/inari-operator
-          ref: ${{ steps.operator.outputs.ref }}
-          path: inari-operator
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: inari-server/go.mod
-
-      - name: Install cosign
-        if: needs.resolve.outputs.build-from-ref == 'none' && github.event.inputs.image-tag == ''
-        uses: sigstore/cosign-installer@v3
-
-      - name: Pull and verify published server image
-        # Prefer the cosign-signed artifact that actually ships over a
-        # rebuild. The pulled image is re-tagged to `inari/server:e2e` —
-        # the tag the Go stack provisioner loads into kind — so no rebuild happens.
-        # cosign verification is skipped for an explicit image-tag override:
-        # the edge workflow signs only the OpenAPI artifact, not the image
-        # (repair/debug path — Release PRs always verify).
-        if: needs.resolve.outputs.build-from-ref == 'none'
-        run: |
-          set -euo pipefail
-          if [ -z "${{ github.event.inputs.image-tag }}" ]; then
-            cosign verify "$IMAGE_REF" \
-              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-              --certificate-identity-regexp https://github.com/7K-Inari/inari-server/
-          else
-            echo "image-tag override — skipping cosign verification (edge images are unsigned)"
-          fi
-          docker pull "$IMAGE_REF"
-          docker tag "$IMAGE_REF" inari/server:e2e
-
-      - name: Build server image from ref
-        # Repair path for unreleased combos (workflow_dispatch input).
-        if: needs.resolve.outputs.build-from-ref != 'none'
-        working-directory: inari-server
-        run: |
-          git checkout "${{ needs.resolve.outputs.build-from-ref }}"
-          docker build -f deploy/docker/Dockerfile -t inari/server:e2e .
-
-      - name: Build agent image
-        run: docker build -f inari-agent/Dockerfile -t inari/agent:e2e ./inari-agent
-
-      - name: Install kind
-        # The Go provisioner creates the cluster itself (it needs a custom
-        # extraMounts config for the git hostPath), so only the binary is
-        # installed here.
-        uses: helm/kind-action@v1.12.0
-        with:
-          cluster_name: inari-e2e
-          install_only: true
-
-      - name: Provision + assert golden path (Go stack suite)
-        # Phase 3 of the shell→Go migration: with no usable handoff file the
-        # suite provisions the whole stack in-process (kind cluster incl. the
-        # git hostPath mount, operators, every helm chart in dependency
-        # layers, KC seeding, tenant/cluster/agent), then runs the
-        # golden-path assertions (per-phase failure identity in CI output).
-        # E2E_HA=1 on the HA leg flips the helm replica values AND unlocks
-        # the disruption subtests; SERVER_MIGRATIONS_DIR points at the
-        # inari-server checkout (HA(c) migration count).
-        # KEEP_CLUSTER=true: the workflow owns teardown (final step) so the
-        # diagnostics step still has a cluster to inspect on failure, and the
-        # api-schema/UI steps below still have a stack to test against.
-        # The stack suite is a nested Go module: go test must run from INSIDE
-        # it (a ./scripts/e2e/stack/... pattern from the repo root fails with
-        # "directory prefix ... does not contain main module"). -timeout
-        # exceeds the 10m go test default because bring-up + assertions
-        # take longer.
-        # Chart dirs are pinned explicitly, resolved the same way for the
-        # agent and operator component checkouts.
-        working-directory: bundle/scripts/e2e/stack
-        env:
-          E2E_HA: ${{ matrix.ha && '1' || '0' }}
-          KEEP_CLUSTER: "true"
-          E2E_HANDOFF_PATH: /tmp/inari-e2e-handoff.json
-          SERVER_MIGRATIONS_DIR: ${{ github.workspace }}/inari-server/internal/db/migrations
-        run: >-
-          AGENT_CHART_DIR=${{ github.workspace }}/inari-agent/charts/inari-agent
-          OPERATOR_CHART_DIR=${{ github.workspace }}/inari-operator/charts/inari-operator
-          go test -tags=e2e -count=1 -timeout ${{ matrix.ha && '50m' || '40m' }} -json ./...
-          2>&1 | tee /tmp/golden-path-go.json
-
-      - name: Run api-schema e2e against the live stack
-        # The driver is stored in this repo and copied into the inari-server
-        # checkout: it imports inari-server modules and reads dist/openapi.yaml
-        # (generated here — the file is not committed at server tags).
-        working-directory: inari-server
-        run: |
-          set -euo pipefail
-          cp "${{ github.workspace }}/bundle/scripts/e2e/api/api_schema_e2e_test.go" e2e/
-          make export-openapi
-          kubectl -n inari port-forward svc/inari-server 18090:8080 >/dev/null 2>&1 &
-          kubectl -n inari port-forward svc/keycloak-service 18091:8080 >/dev/null 2>&1 &
-          sleep 3 # port-forwards need a moment before accepting connections
-          E2E_BASE_URL=http://127.0.0.1:18090 \
-          E2E_KEYCLOAK_URL=http://127.0.0.1:18091 \
-          E2E_OPENAPI="${{ github.workspace }}/inari-server/dist/openapi.yaml" \
-          go test -tags=e2e ./e2e/ -run TestAPISchemaConformance -count=1 -v
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('bundle/scripts/e2e/ui/package-lock.json') }}
-
-      - name: Run console UI e2e (Playwright)
-        # Browser-level e2e (run d701e2ba advice): real Keycloak login + the
-        # Access console's RBAC tabs via the Playwright Test suite in
-        # scripts/e2e/ui. Two adaptations vs production:
-        #   1. The console's keycloakUrl must be browser-reachable, so it is
-        #      re-set to the port-forward (tokens keep the converged
-        #      service-DNS issuer, which the server accepts).
-        #   2. There is no gateway in kind and the server sends no CORS
-        #      headers, so lib/ui-proxy.mjs merges console + API onto one origin
-        #      (the production topology) for the browser.
-        # Persona seeding (KC users + e2e-org join + role memberships via the
-        # inari-server API) and the inari-ui redirect whitelist live in
-        # scripts/e2e/ui/seed/seed-personas.mjs (see scripts/e2e/ui/README.md).
-        working-directory: bundle
-        run: |
-          set -euo pipefail
-          KC=http://127.0.0.1:18091
-
-          # Fresh port-forwards (the api-schema step's may have died).
-          pkill -f "kubectl -n inari port-forward" 2>/dev/null || true
-          kubectl -n inari port-forward svc/inari-console 18080:80 >/dev/null 2>&1 &
-          kubectl -n inari port-forward svc/inari-server 18090:8080 >/dev/null 2>&1 &
-          kubectl -n inari port-forward svc/keycloak-service 18091:8080 >/dev/null 2>&1 &
-          sleep 3
-
-          # Seed the e2e personas (idempotent) and whitelist the browser
-          # origin on the realm-imported inari-ui client. Fails the job here —
-          # before browser install — if the membership API is broken (P0).
-          node scripts/e2e/ui/seed/seed-personas.mjs
-
-          # Point the SPA's Keycloak URL at the browser-reachable forward.
-          helm upgrade inari-console charts/inari-console --namespace inari \
-            --reuse-values --set keycloakUrl="$KC"
-          kubectl -n inari rollout status deployment/inari-console --timeout=180s
-
-          node scripts/e2e/lib/ui-proxy.mjs &
-          PROXY_PID=$!
-          trap 'kill $PROXY_PID 2>/dev/null || true' EXIT
-          cd scripts/e2e/ui
-          npm ci
-          npx playwright install --with-deps chromium
-          npx playwright test --config playwright.config.ci.ts --grep @p0 --grep-invert @quarantine
-
-      - name: Report UI e2e flakes
-        # Post-process the Playwright JSON report: any test that passed only
-        # after a retry is a flake candidate. Never fails the gate; writes
-        # test-results/flake-report.json (uploaded below) for the nightly
-        # quarantine sweep.
-        if: always()
-        working-directory: bundle/scripts/e2e/ui
-        run: node report-flakes.mjs
-
-      - name: Upload flake report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ui-e2e-flakes-ha-${{ matrix.ha }}
-          path: bundle/scripts/e2e/ui/test-results/flake-report.json
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload UI e2e artifacts on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ui-e2e-ha-${{ matrix.ha }}
-          path: |
-            bundle/scripts/e2e/ui/test-results/
-            bundle/scripts/e2e/ui/playwright-report/
-          if-no-files-found: ignore
-          retention-days: 7
-          # Traces/videos/screenshots are already zip/mp4/png — skip gzip.
-          compression-level: 0
-
-      - name: Collect diagnostics bundle on failure
-        if: failure()
-        run: |
-          set +e
-          kubectl config use-context kind-inari-e2e || true
-          mkdir -p /tmp/e2e-diag
-          kubectl -n inari get pods -o wide > /tmp/e2e-diag/pods.txt 2>&1
-          kubectl -n inari get events --sort-by=.lastTimestamp > /tmp/e2e-diag/events.txt 2>&1
-          kubectl -n inari describe pods > /tmp/e2e-diag/describe-pods.txt 2>&1
-          kubectl -n inari logs -l app.kubernetes.io/name=inari-server --prefix --tail=500 \
-            > /tmp/e2e-diag/inari-server.log 2>&1
-          kubectl -n inari-system logs deployment/inari-agent --tail=500 > /tmp/e2e-diag/inari-agent.log 2>&1
-          kubectl -n inari logs deployment/inari-console --tail=100 > /tmp/e2e-diag/inari-console.log 2>&1
-          kubectl -n inari logs deployment/inari-operator --tail=100 > /tmp/e2e-diag/inari-operator.log 2>&1
-          cp /tmp/inari-e2e-handoff.json /tmp/e2e-diag/ 2>/dev/null
-          if [ "${{ matrix.ha }}" = "true" ]; then
-            kubectl -n inari get pdb,deployment inari-server -o wide > /tmp/e2e-diag/ha.txt 2>&1
-            PRIMARY=$(kubectl -n inari get cluster.postgresql.cnpg.io/postgresql \
-              -o jsonpath='{.status.currentPrimary}' 2>/dev/null)
-            if [ -n "$PRIMARY" ]; then
-              URI=$(kubectl -n inari get secret inari-db -o jsonpath='{.data.inari-uri}' | base64 -d)
-              kubectl -n inari exec "$PRIMARY" -c postgres -- \
-                psql "$URI" -c 'SELECT name, holder, expires_at FROM leader_leases' \
-                > /tmp/e2e-diag/leader-leases.txt 2>&1
-            fi
-          fi
-          # Keep the summary visible in the job log too.
-          cat /tmp/e2e-diag/pods.txt
-          tail -100 /tmp/e2e-diag/inari-server.log
-          tail -100 /tmp/e2e-diag/inari-agent.log
-          exit 0
-
-      - name: Upload Go test JSON + diagnostics on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: golden-path-go-ha-${{ matrix.ha }}
-          path: |
-            /tmp/golden-path-go.json
-            /tmp/e2e-diag/
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Delete kind cluster
-        if: always()
-        run: kind delete cluster --name inari-e2e || true
+    uses: ./.github/workflows/e2e-stack.yaml
+    with:
+      mode: gate
+      ha: ${{ matrix.ha }}
+      bundle-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
+      server-src-ref: ${{ needs.resolve.outputs.server-src-ref }}
+      image-tag: ${{ needs.resolve.outputs.image-tag }}
+      build-from-ref: ${{ needs.resolve.outputs.build-from-ref }}
+      cosign-verify: ${{ github.event.inputs.image-tag == '' }}
+      branch-hint: ${{ github.head_ref || github.ref_name }}
+      retention-days: 7
