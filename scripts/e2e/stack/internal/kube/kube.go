@@ -1,0 +1,137 @@
+// Package kube is a thin exec wrapper over the kubectl CLI — parity with
+// chart-testing (no client-go): there is zero magic between the test and
+// the CLI behavior, and failures surface the exact command + stderr.
+package kube
+
+import (
+	"bytes"
+	"encoding/base64"
+	"fmt"
+	"os/exec"
+	"strings"
+)
+
+// Run executes a CLI and returns stdout; stderr is attached to the error.
+func Run(name string, args ...string) (string, error) {
+	cmd := exec.Command(name, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%s %s: %w\n%s", name, strings.Join(args, " "), err, stderr.String())
+	}
+	return stdout.String(), nil
+}
+
+// Kubectl runs kubectl with the given args.
+func Kubectl(args ...string) (string, error) { return Run("kubectl", args...) }
+
+// ExecInPod runs cmd inside a pod (no shell implied — pass sh -c yourself).
+func ExecInPod(ns, pod string, cmd ...string) (string, error) {
+	args := []string{"-n", ns, "exec", pod, "--"}
+	return Kubectl(append(args, cmd...)...)
+}
+
+// ExecInContainer runs cmd inside a specific container of a pod.
+func ExecInContainer(ns, pod, container string, cmd ...string) (string, error) {
+	args := []string{"-n", ns, "exec", pod, "-c", container, "--"}
+	return Kubectl(append(args, cmd...)...)
+}
+
+// ExecInPodStdin runs cmd inside a pod with stdin piped in.
+func ExecInPodStdin(ns, pod, stdin string, cmd ...string) (string, error) {
+	args := []string{"-n", ns, "exec", "-i", pod, "--"}
+	args = append(args, cmd...)
+	c := exec.Command("kubectl", args...)
+	c.Stdin = strings.NewReader(stdin)
+	var stdout, stderr bytes.Buffer
+	c.Stdout = &stdout
+	c.Stderr = &stderr
+	if err := c.Run(); err != nil {
+		return "", fmt.Errorf("kubectl %s: %w\n%s", strings.Join(args, " "), err, stderr.String())
+	}
+	return stdout.String(), nil
+}
+
+// Curl mirrors the script's xcurl: curl -sf -m 20 inside the toolbox pod.
+// Every HTTP call in the suite goes through this so the suite is immune to
+// port-forward fragility, exactly like golden-path.sh.
+func Curl(ns, toolbox string, args ...string) (string, error) {
+	full := append([]string{"curl", "-sf", "-m", "20"}, args...)
+	return ExecInPod(ns, toolbox, full...)
+}
+
+// RolloutStatus waits for a rollout (deployment/statefulset name form).
+func RolloutStatus(ns, resource, timeout string) error {
+	_, err := Kubectl("-n", ns, "rollout", "status", resource, "--timeout="+timeout)
+	return err
+}
+
+// WaitCondition wraps kubectl wait --for=<condition> <resources...>.
+func WaitCondition(ns, condition, timeout string, resources ...string) error {
+	args := []string{"-n", ns, "wait", "--for=" + condition}
+	args = append(args, resources...)
+	args = append(args, "--timeout="+timeout)
+	_, err := Kubectl(args...)
+	return err
+}
+
+// Logs returns the full logs (--tail=-1) for a label selector.
+func Logs(ns, selector string) (string, error) {
+	return Kubectl("-n", ns, "logs", "-l", selector, "--tail=-1")
+}
+
+// Scale sets replicas and waits for the rollout.
+func Scale(ns, resource string, replicas int, timeout string) error {
+	if _, err := Kubectl("-n", ns, "scale", resource, fmt.Sprintf("--replicas=%d", replicas)); err != nil {
+		return err
+	}
+	return RolloutStatus(ns, resource, timeout)
+}
+
+// PSQLInari runs SQL against the platform database via the CNPG primary pod
+// (the connection URI never leaves the cluster).
+func PSQLInari(ns, sql string) (string, error) {
+	uriB64, err := Kubectl("-n", ns, "get", "secret", "inari-db",
+		"-o", "jsonpath={.data.inari-uri}")
+	if err != nil {
+		return "", err
+	}
+	uri, err := base64.StdEncoding.DecodeString(strings.TrimSpace(uriB64))
+	if err != nil {
+		return "", fmt.Errorf("decoding inari-db uri: %w", err)
+	}
+	primary, err := Kubectl("-n", ns, "get", "cluster.postgresql.cnpg.io/postgresql",
+		"-o", "jsonpath={.status.currentPrimary}")
+	if err != nil {
+		return "", err
+	}
+	out, err := ExecInContainer(ns, strings.TrimSpace(primary), "postgres",
+		"psql", string(uri), "-tAc", sql)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// AuthCanI mirrors `kubectl auth can-i <verb> <resource> --as=<user>
+// --as-group=<g>`: exit 0 means allowed, exit 1 with "no" on stdout means
+// denied; anything else is a real error.
+func AuthCanI(user string, groups []string, verb, resource string) (bool, error) {
+	args := []string{"auth", "can-i", verb, resource, "--as=" + user}
+	for _, g := range groups {
+		args = append(args, "--as-group="+g)
+	}
+	cmd := exec.Command("kubectl", args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	if strings.TrimSpace(stdout.String()) == "no" {
+		return false, nil
+	}
+	return false, fmt.Errorf("kubectl %s: %w\n%s", strings.Join(args, " "), err, stderr.String())
+}
