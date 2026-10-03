@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/7K-Inari/inari-release-bundle/compare/inari-server-v0.1.9...inari-server-v0.2.0) (2026-10-03)
+
+
+### Features
+
+* **inari-server:** wire agent compat ConfigMap into server env ([#55](https://github.com/7K-Inari/inari-release-bundle/issues/55)) ([351bee2](https://github.com/7K-Inari/inari-release-bundle/commit/351bee28baccf6a2e06277eb02bb51db7951dd68))
+* **release:** centralize charts in inari-release-bundle + per-merge edge releases ([#54](https://github.com/7K-Inari/inari-release-bundle/issues/54)) ([65b30c1](https://github.com/7K-Inari/inari-release-bundle/commit/65b30c1cced4af9d8fcea202c9ede0f6d4ebbd75))
+
 ## [0.1.9](https://github.com/7K-Inari/inari-server/compare/inari-server-chart-v0.1.8...inari-server-chart-v0.1.9) (2026-09-24)
 
 
