@@ -42,7 +42,7 @@ jobs:
       server-tag: ${{ steps.resolve.outputs.server-tag }}
       image-tag: ${{ steps.resolve.outputs.image-tag }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Resolve inari-server tag from chart appVersion
         id: resolve
         run: |
@@ -80,7 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Quarantine sweep (file/dedupe e2e-flake issues)
         # Files an `e2e-flake` issue for any test flaky in 2+ nightly runs
         # within 7 days; comments on the existing open issue for the same
